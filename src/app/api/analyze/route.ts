@@ -31,10 +31,15 @@ function notEnoughInformation(): AnalysisAnswer {
     relevantArea: "",
     trigger: "",
     baseObject: "",
+    targetEntity: "",
+    whyThisApproach:
+      "The retrieved documentation does not contain enough information to choose a configuration approach.",
     suggestedLogic: "",
+    configurationGuidance: [],
     explanation:
       "The available Employee Central documentation does not contain enough relevant information to answer this request.",
     importantConsiderations: [],
+    validationSteps: [],
     sources: [],
   };
 }
@@ -141,8 +146,7 @@ export async function POST(request: Request) {
   } catch {
     return Response.json(
       {
-        error:
-          "Unable to analyze the request right now. Please try again later.",
+        error: "Unable to analyze the request right now. Please try again later.",
       },
       { status: 500 },
     );

@@ -46,9 +46,13 @@ export type AnalysisAnswer = {
   relevantArea: string;
   trigger: string;
   baseObject: string;
+  targetEntity: string;
+  whyThisApproach: string;
   suggestedLogic: string;
+  configurationGuidance: string[];
   explanation: string;
   importantConsiderations: string[];
+  validationSteps: string[];
   sources: { title: string; section: string }[];
 };
 
@@ -58,7 +62,43 @@ type GroundingChunk = {
   content: string;
 };
 
-function isAnalysisAnswer(value: unknown): value is AnalysisAnswer {
+type EvidenceStep = {
+  step: string;
+  evidence: string;
+};
+
+type GeneratedSource = {
+  title: string;
+  section: string;
+  evidence?: string;
+};
+
+type GeneratedAnalysisAnswer = Omit<
+  AnalysisAnswer,
+  "configurationGuidance" | "validationSteps" | "sources"
+> & {
+  configurationGuidance: (EvidenceStep | string)[];
+  validationSteps: (EvidenceStep | string)[];
+  sources: GeneratedSource[];
+};
+
+function isEvidenceStep(value: unknown): value is EvidenceStep {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    typeof (value as Record<string, unknown>).step === "string" &&
+    typeof (value as Record<string, unknown>).evidence === "string"
+  );
+}
+
+function isGeneratedStep(value: unknown): value is EvidenceStep | string {
+  return typeof value === "string" || isEvidenceStep(value);
+}
+
+function isGeneratedAnalysisAnswer(
+  value: unknown,
+): value is GeneratedAnalysisAnswer {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return false;
   }
@@ -69,10 +109,16 @@ function isAnalysisAnswer(value: unknown): value is AnalysisAnswer {
     typeof answer.relevantArea === "string" &&
     typeof answer.trigger === "string" &&
     typeof answer.baseObject === "string" &&
+    typeof answer.targetEntity === "string" &&
+    typeof answer.whyThisApproach === "string" &&
     typeof answer.suggestedLogic === "string" &&
+    Array.isArray(answer.configurationGuidance) &&
+    answer.configurationGuidance.every(isGeneratedStep) &&
     typeof answer.explanation === "string" &&
     Array.isArray(answer.importantConsiderations) &&
     answer.importantConsiderations.every((item) => typeof item === "string") &&
+    Array.isArray(answer.validationSteps) &&
+    answer.validationSteps.every(isGeneratedStep) &&
     Array.isArray(answer.sources) &&
     answer.sources.every(
       (source) =>
@@ -80,7 +126,9 @@ function isAnalysisAnswer(value: unknown): value is AnalysisAnswer {
         source !== null &&
         !Array.isArray(source) &&
         typeof (source as Record<string, unknown>).title === "string" &&
-        typeof (source as Record<string, unknown>).section === "string",
+        typeof (source as Record<string, unknown>).section === "string" &&
+        ((source as Record<string, unknown>).evidence === undefined ||
+          typeof (source as Record<string, unknown>).evidence === "string"),
     )
   );
 }
@@ -124,6 +172,21 @@ function isSupportedConsideration(
 
 function citationKey(title: string, section: string): string {
   return JSON.stringify([title, section]);
+}
+
+function normalizeEvidence(value: string): string {
+  return value.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function isEvidenceSupported(
+  item: { evidence: string },
+  chunks: GroundingChunk[],
+): boolean {
+  if (!item.evidence.trim()) return false;
+  const evidence = normalizeEvidence(item.evidence);
+  return chunks.some((chunk) =>
+    normalizeEvidence(`${chunk.section}\n${chunk.content}`).includes(evidence),
+  );
 }
 
 function conciseConfiguration(recommendation: string, context: string): string {
@@ -295,15 +358,20 @@ export async function generateGroundedAnswer(
           "Do not invent Admin Center paths, rule scenarios, triggers, base objects, or configuration details.",
           "Choose the configuration type from the directly applicable documented use case, not incidental semantic overlap. When a request asks to update or create data in another supported entity from a changed source entity, prefer Cross-Entity Rules. Recommend Workflow Derivation only when the requirement explicitly asks to trigger, select, or assign an approval workflow.",
           "For Cross-Entity Rules, the source entity is the base object. If a retrieved supported-use-case explicitly states 'Source Entity to Target Entity' and the request clearly names that target, report the documented source entity as baseObject.",
+                    "Do not invent a field-level condition, rule trigger registration, or expression from a source that only gives a field-change example. State only the documented source/target behavior and supported trigger information.",
           "recommendedConfiguration must be only a concise configuration type, not a sentence. Prefer labels such as onChange Business Rule, Workflow Derivation Rule, Event Reason Derivation Rule, or Cross-Entity Rule when supported by context.",
           "relevantArea must be a concise functional area, not a documentation section heading. Prefer Employee Central Business Rules, Workflow Derivation, Event Reason Derivation, or Cross-Entity Rules when supported by context.",
+          "whyThisApproach must explain why the documented configuration fits this request and may distinguish it from nearby concepts only when the retrieved sources support that distinction. Do not treat the requested behavior as proof of undocumented rule details.",
+          "targetEntity must be the documented target entity when clearly stated in a selected source; otherwise return an empty string.",
+          "configurationGuidance must contain 2 to 5 concise, practical steps grounded in retrieved sources. Return each as an object with step and evidence fields. evidence must be an exact contiguous excerpt copied from a retrieved sourceContent that supports the step. Separate documented setup facts from missing detail. Never invent a field-level condition, condition expression, rule assignment, specific operation, or implementation procedure unless the selected source explicitly documents it. If exact setup detail is absent, say so and make the step a verification of supported source/target/operation rather than fabricating configuration steps.",
           "Only provide a trigger when the retrieved text explicitly names a technical trigger. A described business change is not itself a trigger.",
           "Explicitly say when the retrieved documentation is insufficient.",
           "Keep every field concise and practical. Do not reproduce long source text verbatim; paraphrase it.",
-          "Return an empty importantConsiderations array unless a source you select explicitly states the caveat, prerequisite, or validation consideration. Do not add generic testing or best-practice advice.",
-          "Return one JSON object with exactly these string fields: recommendedConfiguration, relevantArea, trigger, baseObject, suggestedLogic, explanation; an importantConsiderations array of strings; and a sources array of objects containing title and section strings.",
+          "Include directly relevant documented limitations, prerequisites, supported triggers, source/target restrictions, and processing-context restrictions in importantConsiderations. Return an empty array only when the selected sources contain no applicable cautions. Do not add generic testing or best-practice advice.",
+          "validationSteps must contain 2 to 4 practical analyst checks derived from the documented behavior. Return each as an object with step and evidence fields; evidence must be an exact contiguous excerpt from a retrieved sourceContent supporting the behavior being checked. They may describe changing documented source data and checking the documented target result, but must not introduce unrelated concepts unless a selected source discusses them.",
           "The retrieved context is a list of structured source records. Each record has separate sourceTitle, sourceSection, and sourceContent fields; do not concatenate adjacent field values. Select only records that materially support the answer fields. Prefer one strong source over weak or redundant sources. Do not cite every retrieved source by default.",
-          "For each selected source, return its exact title and exact section. Do not cite any source that does not support the recommendation, trigger, base object, logic, explanation, or considerations.",
+            "For each selected source, return its exact title, exact section, and an exact contiguous evidence excerpt from its sourceContent that directly supports the answer. Do not cite a source merely because it is semantically related. Do not cite any source that does not support the recommendation, trigger, base object, logic, explanation, or considerations.",
+            "Return one JSON object with exactly these string fields: recommendedConfiguration, relevantArea, trigger, baseObject, targetEntity, whyThisApproach, suggestedLogic, explanation; configurationGuidance and validationSteps arrays of objects containing step and evidence strings; importantConsiderations as an array of strings; and sources as an array of objects containing title, section, and evidence strings.",
         ].join(" "),
       },
       {
@@ -334,7 +402,7 @@ export async function generateGroundedAnswer(
     throw new Error("The answer model returned invalid JSON.");
   }
 
-  if (!isAnalysisAnswer(parsed)) {
+  if (!isGeneratedAnalysisAnswer(parsed)) {
     throw new Error("The answer model returned an unexpected response format.");
   }
 
@@ -347,8 +415,16 @@ export async function generateGroundedAnswer(
   const selectedChunks = Array.from(
     new Set(
       parsed.sources
-        .map(({ title, section }) => citationKey(title, section))
-        .filter((key) => chunksByCitation.has(key)),
+        .filter((source) => {
+          const chunk = chunksByCitation.get(
+            citationKey(source.title, source.section),
+          );
+          return chunk && (
+            !source.evidence ||
+            isEvidenceSupported({ evidence: source.evidence }, [chunk])
+          );
+        })
+        .map(({ title, section }) => citationKey(title, section)),
     ),
   ).flatMap((key) => {
     const chunk = chunksByCitation.get(key);
@@ -361,10 +437,15 @@ export async function generateGroundedAnswer(
       relevantArea: "",
       trigger: "",
       baseObject: "",
+      targetEntity: "",
+      whyThisApproach:
+        "The retrieved sources do not provide enough information to select and justify a configuration approach.",
       suggestedLogic: "",
+      configurationGuidance: [],
       explanation:
         "The retrieved documentation does not provide a source that sufficiently supports an answer to this request.",
       importantConsiderations: [],
+      validationSteps: [],
       sources: [],
     };
   }
@@ -387,9 +468,77 @@ export async function generateGroundedAnswer(
     query,
     selectedChunks,
   );
+  const targetEntity = contextText
+    .toLowerCase()
+    .includes(parsed.targetEntity.trim().toLowerCase())
+    ? parsed.targetEntity
+    : "";
   const importantConsiderations = parsed.importantConsiderations.filter(
     (item) => isSupportedConsideration(item, selectedChunks),
   );
+  const configurationGuidance = parsed.configurationGuidance
+    .filter((step) =>
+      typeof step === "string" || isEvidenceSupported(step, selectedChunks),
+    )
+    .map((step) => typeof step === "string" ? step : step.step)
+    .slice(0, 5);
+  const hasSpecificSetupDetails =
+    /Manage Business Configuration|Business Configuration UI|BCUI|field-level condition|specific expression/i.test(
+      contextText,
+    );
+  if (!hasSpecificSetupDetails) {
+    if (configurationGuidance.length === 5) configurationGuidance.pop();
+    configurationGuidance.push(
+      "The retrieved documentation does not specify the exact setup path, field-level condition, or expression for this use case; confirm those details for the supported scenario before implementation.",
+    );
+  }
+  const validationSteps = parsed.validationSteps
+    .filter((step) =>
+      typeof step === "string" || isEvidenceSupported(step, selectedChunks),
+    )
+    .map((step) => typeof step === "string" ? step : step.step)
+    .slice(0, 4);
+
+  if (configurationGuidance.length < 2) {
+    if (baseObject && targetEntity) {
+      configurationGuidance.push(
+        `Use ${baseObject} as the documented source/base object and ${targetEntity} as the documented target.`,
+        `Confirm the intended operation is supported for this source/target pair; the retrieved documentation does not specify an exact field-level condition or expression.`,
+      );
+    } else {
+      configurationGuidance.push(
+        "The retrieved sources do not specify enough detail to provide a complete configuration procedure.",
+        "Confirm the applicable supported scenario and setup details in the cited documentation before implementation.",
+      );
+    }
+    configurationGuidance.splice(5);
+  }
+  if (validationSteps.length < 2 && baseObject && targetEntity) {
+    const sourceTargetChunk = selectedChunks.find((chunk) => {
+      const content = chunk.content.toLowerCase();
+      return content.includes(baseObject.toLowerCase()) &&
+        content.includes(targetEntity.toLowerCase()) &&
+        content.includes("must be the base object");
+    });
+
+    if (sourceTargetChunk) {
+      const fallbackSteps = [
+        `Change ${baseObject} using the documented use case and verify that ${targetEntity} changes as described.`,
+        `Confirm ${baseObject} is the configured rule base object and check the resulting ${targetEntity} update.`,
+      ];
+      for (const step of fallbackSteps) {
+        if (validationSteps.length >= 2) break;
+        if (!validationSteps.includes(step)) validationSteps.push(step);
+      }
+    }
+  }
+  if (validationSteps.length < 2) {
+    validationSteps.push(
+      "Test a transaction that matches the documented use case and verify the documented result.",
+      "Confirm the behavior only for the supported entity and processing context described by the selected source.",
+    );
+    validationSteps.splice(4);
+  }
 
   const sources = selectedChunks.map(({ source_title, section }) => ({
     title: source_title,
@@ -410,7 +559,10 @@ export async function generateGroundedAnswer(
     relevantArea,
     trigger,
     baseObject,
+    targetEntity,
+    configurationGuidance,
     importantConsiderations,
+    validationSteps,
     sources,
   };
 }

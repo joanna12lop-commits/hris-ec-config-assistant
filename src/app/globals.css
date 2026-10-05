@@ -444,6 +444,27 @@ code {
   line-height: 1.65;
 }
 
+.result-body-copy {
+  margin: 0;
+  color: #5c6961;
+  font-size: 11px;
+  line-height: 1.65;
+}
+
+.guidance-list {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding-left: 21px;
+  color: #58675e;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.guidance-list li {
+  padding-left: 2px;
+}
+
 .considerations-section {
   padding: 14px 0;
   border-bottom: 1px solid var(--line);
