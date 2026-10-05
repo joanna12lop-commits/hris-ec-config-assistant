@@ -1,0 +1,451 @@
+[
+  {
+    "title": "Business Rules in Employee Central",
+    "topic": "business_rules",
+    "source_section": "7 Business Rules in Employee Central",
+    "page": 600,
+    "source_summary": "Employee Central business rules add application logic that reacts to data changes. They can default or conditionally set values, change field properties, display messages, calculate transient fields, and validate data. Rule scenarios constrain the available parameters and objects for specific use cases, while rule contexts restrict when a rule is allowed to execute.",
+    "supported_use_cases": [
+      "Default field values",
+      "Conditional field values",
+      "Field properties",
+      "Validation and messages",
+      "Transient calculations"
+    ],
+    "trigger_event": "Depends on rule scenario and assignment",
+    "base_object_entity": "HRIS elements or MDF objects, depending on scenario",
+    "configuration_logic": "IF documented condition is met THEN perform the configured action.",
+    "important_limitations": [
+      "Employee Profile standard/background elements are not supported as business-rule targets in this context.",
+      "Use scenario-specific rules where available to reduce configuration errors."
+    ],
+    "source_url": "https://help.sap.com/doc/cc751d98800d414ca72fc4695a9bf3e7/2611/en-US/SF_EC_Master_Impl.pdf"
+  },
+  {
+    "title": "onInit Rules for Hire/Rehire and Foundation Objects",
+    "topic": "rule_events",
+    "source_section": "7.7.1 Event Types for HRIS Elements and HRIS Fields",
+    "page": 614,
+    "source_summary": "The onInit event runs when a supported page is loaded. It is intended for setting field properties or default values that should be available immediately when the page opens. In Employee Central Core, onInit rules are supported for Hire/Rehire scenarios and for foundation objects in Manage Organization, Pay and Job Structures.",
+    "supported_use_cases": [
+      "Default values during Hire/Rehire",
+      "Set field required/visibility properties on page load",
+      "Initialize Foundation Object fields"
+    ],
+    "trigger_event": "onInit",
+    "base_object_entity": "Employee Information / Employee Details Model for Hire/Rehire; Foundation Object for Manage Organization, Pay and Job Structures",
+    "configuration_logic": "WHEN the supported page loads THEN initialize values or field properties.",
+    "important_limitations": [
+      "Does not work for existing users outside the supported Hire/Rehire use case.",
+      "Cross-entity navigation is not supported in the Trigger onInit Rules for Hire/Rehire scenario."
+    ],
+    "source_url": "https://help.sap.com/doc/cc751d98800d414ca72fc4695a9bf3e7/2611/en-US/SF_EC_Master_Impl.pdf"
+  },
+  {
+    "title": "onChange Rules for HRIS Fields",
+    "topic": "rule_events",
+    "source_section": "7.7.1 Event Types for HRIS Elements and HRIS Fields",
+    "page": 614,
+    "source_summary": "The onChange event runs immediately after a supported HRIS field value is changed. It is assigned at field level and is useful for dynamically updating dependent values or reacting to a user's selection before save.",
+    "supported_use_cases": [
+      "Update dependent fields",
+      "Run field-level calculations",
+      "React to user field selections"
+    ],
+    "trigger_event": "onChange",
+    "base_object_entity": "HRIS field",
+    "configuration_logic": "WHEN the base field value changes THEN execute the configured rule actions.",
+    "important_limitations": [
+      "onChange is not supported for hidden fields.",
+      "onChange is not supported for Foundation Objects.",
+      "Messages do not block save; use onSave for blocking error validation."
+    ],
+    "source_url": "https://help.sap.com/doc/cc751d98800d414ca72fc4695a9bf3e7/2611/en-US/SF_EC_Master_Impl.pdf"
+  },
+  {
+    "title": "onSave Rules for HRIS Elements",
+    "topic": "rule_events",
+    "source_section": "7.7.1 Event Types for HRIS Elements and HRIS Fields",
+    "page": 614,
+    "source_summary": "The onSave event runs when a supported page is saved. It is assigned at HRIS-element level and is used for validation and other logic that must execute before the transaction is persisted.",
+    "supported_use_cases": [
+      "Validate data before save",
+      "Set values before persistence",
+      "Trigger scenario-based derivation such as workflow or event reason"
+    ],
+    "trigger_event": "onSave",
+    "base_object_entity": "HRIS element / scenario-specific model base object",
+    "configuration_logic": "WHEN the page is saved THEN evaluate the rule and apply its actions before persistence.",
+    "important_limitations": [
+      "For blocking validation errors, use onSave rather than onChange.",
+      "onSave rules execute at workflow initiation, not at final workflow approval."
+    ],
+    "source_url": "https://help.sap.com/doc/cc751d98800d414ca72fc4695a9bf3e7/2611/en-US/SF_EC_Master_Impl.pdf"
+  },
+  {
+    "title": "onView Rules for Transient Values and Field Properties",
+    "topic": "rule_events",
+    "source_section": "7.7.1 Event Types for HRIS Elements and HRIS Fields",
+    "page": 615,
+    "source_summary": "The onView event is used when a supported page or card is loaded and a transient value or field property needs to be calculated or adjusted for display. Transient results are calculated at runtime rather than treated as fixed database values.",
+    "supported_use_cases": [
+      "Calculate transient values such as age",
+      "Default display-time values",
+      "Change field properties in supported views"
+    ],
+    "trigger_event": "onView",
+    "base_object_entity": "HRIS element / supported model base object",
+    "configuration_logic": "WHEN the supported view loads THEN calculate transient values or apply supported field properties.",
+    "important_limitations": [
+      "Transient fields require an additional onSave rule to set the transient field back to null.",
+      "Permissions are not rechecked after onView rule execution.",
+      "The Terminate action does not support onView."
+    ],
+    "source_url": "https://help.sap.com/doc/cc751d98800d414ca72fc4695a9bf3e7/2611/en-US/SF_EC_Master_Impl.pdf"
+  },
+  {
+    "title": "onPostSave Events for Job Information",
+    "topic": "rule_events",
+    "source_section": "7.1 Rule Scenarios for Employee Central Core / 7.7.1 Event Types for HRIS Elements and HRIS Fields",
+    "page": 602,
+    "source_summary": "The Trigger onPostSave Events for Job Information scenario is used to trigger events after Job Information changes have been saved. onPostSave execution occurs after persistence rather than during the initial save validation phase.",
+    "supported_use_cases": [
+      "Trigger Intelligent Services events after Job Information is saved"
+    ],
+    "trigger_event": "onPostSave",
+    "base_object_entity": "Job Information",
+    "configuration_logic": "AFTER Job Information changes are saved THEN trigger the configured post-save event.",
+    "important_limitations": [
+      "The dedicated scenario is for Job Information.",
+      "onPostSave does not execute at workflow initiation; it executes after final workflow approval.",
+      "Previous-value comparisons require care because the saved value is already current."
+    ],
+    "source_url": "https://help.sap.com/doc/cc751d98800d414ca72fc4695a9bf3e7/2611/en-US/SF_EC_Master_Impl.pdf"
+  },
+  {
+    "title": "Event Reason Derivation Overview",
+    "topic": "event_reason_derivation",
+    "source_section": "7.3 Event Reason Derivation Business Rules",
+    "page": 605,
+    "source_summary": "Event Reason Derivation rules automatically determine an event reason based on changes made to employee data. SAP recommends the dedicated Event Reason Derivation rule scenario because it restricts the available base objects and Set actions and reduces configuration errors.",
+    "supported_use_cases": [
+      "Derive event reason for Job Information changes",
+      "Derive event reason for Compensation Information changes"
+    ],
+    "trigger_event": "onSave",
+    "base_object_entity": "Job Information Model or Compensation Information Model",
+    "configuration_logic": "IF documented change conditions are met THEN set the appropriate Event Reason.",
+    "important_limitations": [
+      "Supported only for Job Information and Compensation Information.",
+      "SAP strongly recommends not deriving event reasons that change employee status.",
+      "A default/fallback rule is recommended so Event Reason is not left unset."
+    ],
+    "source_url": "https://help.sap.com/doc/cc751d98800d414ca72fc4695a9bf3e7/2611/en-US/SF_EC_Master_Impl.pdf"
+  },
+  {
+    "title": "Event Reason Derivation Execution Order",
+    "topic": "event_reason_derivation",
+    "source_section": "7.3 Event Reason Derivation Business Rules",
+    "page": 605,
+    "source_summary": "Scenario-based Event Reason Derivation rules are processed after standard entity rules and before Workflow Derivation. For Job Information, the documented sequence is standard Job Information rules, Event Reason Derivation, HRIS element validation, then Workflow Derivation.",
+    "supported_use_cases": [
+      "Design rule sequencing where workflows depend on the derived event reason"
+    ],
+    "trigger_event": "onSave",
+    "base_object_entity": "Job Information Model / Compensation Information Model",
+    "configuration_logic": "Run standard entity rules first, then Event Reason Derivation, then applicable validation and Workflow Derivation.",
+    "important_limitations": [
+      "SAP recommends only one scenario-based Event Reason Derivation rule per Job Information or Compensation Information element.",
+      "When multiple ERD rules exist, their assigned BCUI order matters."
+    ],
+    "source_url": "https://help.sap.com/doc/cc751d98800d414ca72fc4695a9bf3e7/2611/en-US/SF_EC_Master_Impl.pdf"
+  },
+  {
+    "title": "Event Reason Derivation During Imports",
+    "topic": "event_reason_derivation",
+    "source_section": "7.3 Event Reason Derivation Business Rules - Behavior with Imports",
+    "page": 606,
+    "source_summary": "For imports, business-rule-based Event Reason Derivation requires the Business Rules permission for imports. If the import template provides an Event Reason, that value is used instead of derivation. If the field is included but empty, onSave derivation can determine the value. If the column is omitted or uses &&NO_OVERWRITE&&, the existing Event Reason remains.",
+    "supported_use_cases": [
+      "Derive Event Reason during Job/Compensation data import when no value is supplied"
+    ],
+    "trigger_event": "onSave during import",
+    "base_object_entity": "Job Information / Compensation Information",
+    "configuration_logic": "IF import Event Reason is blank and import business rules are enabled THEN derive Event Reason using the assigned onSave rule.",
+    "important_limitations": [
+      "An explicitly supplied Event Reason in the template takes precedence.",
+      "Import business-rule permission must be enabled for the required entities."
+    ],
+    "source_url": "https://help.sap.com/doc/cc751d98800d414ca72fc4695a9bf3e7/2611/en-US/SF_EC_Master_Impl.pdf"
+  },
+  {
+    "title": "Workflow Derivation Overview",
+    "topic": "workflow_derivation",
+    "source_section": "7.4 Workflow Derivation Business Rules / 7.1 Rule Scenarios",
+    "page": 608,
+    "source_summary": "Workflow Derivation rules define conditions that determine whether a workflow should be triggered for a supported data change. The Trigger Workflows scenario is the dedicated scenario and can only be registered as onSave in Manage Business Configuration.",
+    "supported_use_cases": [
+      "Trigger approval workflows for supported HRIS data changes"
+    ],
+    "trigger_event": "onSave",
+    "base_object_entity": "Scenario-supported HRIS element/model base object",
+    "configuration_logic": "IF approval conditions are met THEN assign the configured workflow.",
+    "important_limitations": [
+      "Trigger Workflows scenario rules can only be registered for onSave.",
+      "SAP recommends only one scenario-based Workflow Derivation rule per HRIS element."
+    ],
+    "source_url": "https://help.sap.com/doc/cc751d98800d414ca72fc4695a9bf3e7/2611/en-US/SF_EC_Master_Impl.pdf"
+  },
+  {
+    "title": "Workflow Approval Conditions for Compensation Changes",
+    "topic": "workflow_derivation",
+    "source_section": "7.4 Workflow Derivation Business Rules",
+    "page": 608,
+    "source_summary": "Workflow Derivation defines conditions for triggering a workflow when supported employee data changes. For a salary, pay, or other compensation change, an approval condition can select a configured workflow only when the applicable HRIS element and transaction context support the Workflow Derivation scenario. The guide describes conditional workflow triggering for supported changes; it does not define a universal compensation approval condition.",
+    "supported_use_cases": [
+      "Relate customer-defined approval conditions to supported compensation or pay data changes",
+      "Trigger a configured workflow when supported changed employee data meets the configured conditions"
+    ],
+    "trigger_event": "onSave",
+    "base_object_entity": "Scenario-supported HRIS element/model base object; confirm support for the applicable compensation data",
+    "configuration_logic": "IF changed employee data meets the configured approval conditions AND the applicable data change is supported by Workflow Derivation THEN assign the configured workflow.",
+    "important_limitations": [
+      "The Trigger Workflows scenario can only be registered for onSave.",
+      "Workflow Derivation applies to supported data changes; do not assume every compensation or pay element and transaction context is supported.",
+      "The guide does not prescribe a standard salary-increase percentage threshold."
+    ],
+    "source_url": "https://help.sap.com/doc/cc751d98800d414ca72fc4695a9bf3e7/2611/en-US/SF_EC_Master_Impl.pdf"
+  },
+  {
+    "title": "Customer-Defined Salary Increase Thresholds for Approval",
+    "topic": "workflow_derivation",
+    "source_section": "7.4 Workflow Derivation Business Rules",
+    "page": 608,
+    "source_summary": "The Employee Central guide describes Workflow Derivation as conditions that determine whether a workflow is triggered for a supported data change. A salary-increase threshold such as 10% is a customer-defined business condition, not a percentage supplied by this guide. If the applicable change is supported, that condition may be represented in the configured rule to assign the appropriate approval workflow.",
+    "supported_use_cases": [
+      "Distinguish a customer-defined salary or pay increase threshold from SAP-provided rule behavior",
+      "Describe approval conditions for a supported compensation change without assuming a default percentage"
+    ],
+    "trigger_event": "onSave",
+    "base_object_entity": "Scenario-supported HRIS element/model base object; confirm support for the applicable compensation data",
+    "configuration_logic": "IF a customer-defined salary/pay change condition is met AND the change is supported by the applicable Workflow Derivation scenario THEN assign the configured approval workflow.",
+    "important_limitations": [
+      "A specific threshold such as 10% must come from the customer's business requirement; it is not specified by this guide.",
+      "The Trigger Workflows scenario can only be registered for onSave.",
+      "Do not infer support for a compensation field or processing context unless it is supported by the applicable scenario."
+    ],
+    "source_url": "https://help.sap.com/doc/cc751d98800d414ca72fc4695a9bf3e7/2611/en-US/SF_EC_Master_Impl.pdf"
+  },
+  {
+    "title": "Workflow Derivation Execution Order",
+    "topic": "workflow_derivation",
+    "source_section": "7.4 Workflow Derivation Business Rules / Rule Handling with Manager Self-Service",
+    "page": 608,
+    "source_summary": "Workflow Derivation scenario rules execute after standard onSave rules and after Event Reason Derivation for entities where ERD applies. This allows workflow conditions to evaluate values that were derived earlier in the same transaction.",
+    "supported_use_cases": [
+      "Workflows that depend on event reason or other values derived earlier in the save sequence"
+    ],
+    "trigger_event": "onSave",
+    "base_object_entity": "Supported HRIS elements",
+    "configuration_logic": "Evaluate standard rules first, then Event Reason Derivation where applicable, and evaluate Workflow Derivation last.",
+    "important_limitations": [
+      "Do not assume Workflow Derivation executes before Event Reason Derivation.",
+      "The exact sequence depends on which entities are part of the transaction."
+    ],
+    "source_url": "https://help.sap.com/doc/cc751d98800d414ca72fc4695a9bf3e7/2611/en-US/SF_EC_Master_Impl.pdf"
+  },
+  {
+    "title": "Forward Propagation in Job Information",
+    "topic": "forward_propagation",
+    "source_section": "4.2.1.2 Forward Propagation in Job Information",
+    "page": 262,
+    "source_summary": "Forward propagation copies a changed field value into future effective-dated Job Information records until a future record contains a different original value. Parent-child associations are evaluated as groups when both parent and child values change.",
+    "supported_use_cases": [
+      "Carry a current or backdated Job Information change into future records",
+      "Propagate associated parent/child values where valid"
+    ],
+    "trigger_event": "System behavior during MSS change or Insert New Record in Job Information History",
+    "base_object_entity": "Job Information",
+    "configuration_logic": "Propagate the changed value forward until a conflicting future value or invalid association stops propagation.",
+    "important_limitations": [
+      "Forward propagation is on by default for Job Information.",
+      "Rules are not triggered for propagated future records.",
+      "Corrections and most deletions in History UI do not forward propagate.",
+      "This is effective-dated record propagation, not the same concept as a business-rule onChange propagation."
+    ],
+    "source_url": "https://help.sap.com/doc/cc751d98800d414ca72fc4695a9bf3e7/2611/en-US/SF_EC_Master_Impl.pdf"
+  },
+  {
+    "title": "Fields Excluded from Job Information Forward Propagation",
+    "topic": "forward_propagation",
+    "source_section": "4.2.1.2.1 Fields Not Propagated in Job Information",
+    "page": 265,
+    "source_summary": "Some Job Information fields are intentionally excluded from forward propagation so that record-specific metadata and transaction values are not copied into future effective-dated records.",
+    "supported_use_cases": [
+      "Understand why specific metadata/event fields remain record-specific"
+    ],
+    "trigger_event": "System forward-propagation handling",
+    "base_object_entity": "Job Information",
+    "configuration_logic": "Do not propagate fields on the system-maintained exclusion list.",
+    "important_limitations": [
+      "Examples include event, event-reason, start-date, end-date, notes, seq-number and wfConfig.",
+      "The exclusion list is system behavior rather than a configurable business rule."
+    ],
+    "source_url": "https://help.sap.com/doc/cc751d98800d414ca72fc4695a9bf3e7/2611/en-US/SF_EC_Master_Impl.pdf"
+  },
+  {
+    "title": "Forward Propagation in Job Relationships",
+    "topic": "forward_propagation",
+    "source_section": "4.2.2.2 Forward Propagation in Job Relationships",
+    "page": 271,
+    "source_summary": "Job Relationship changes can propagate to future effective-dated Job Relationship records. Propagation stops at a conflicting value and field propagation stops at gaps between records.",
+    "supported_use_cases": [
+      "Carry a changed matrix manager or other relationship forward to future records"
+    ],
+    "trigger_event": "MSS change or Insert New Record in Job Relationships History",
+    "base_object_entity": "Job Relationships",
+    "configuration_logic": "Propagate the relationship change forward until a conflicting future value or record gap stops propagation.",
+    "important_limitations": [
+      "Forward propagation is on by default.",
+      "Rules are not triggered for propagated records.",
+      "Corrections and deletions in History UI do not forward propagate.",
+      "Data is not propagated between separate employment records."
+    ],
+    "source_url": "https://help.sap.com/doc/cc751d98800d414ca72fc4695a9bf3e7/2611/en-US/SF_EC_Master_Impl.pdf"
+  },
+  {
+    "title": "Business-Rule Defaulting from Job Classification to Job Title",
+    "topic": "business_rule_propagation",
+    "source_section": "7.12 Example Employee Central Business Rules - Set Job Title",
+    "page": 649,
+    "source_summary": "A business rule can automatically set Job Title in Job Information from the selected Job Classification. SAP documents this as an onChange rule created with the Trigger onChange Rules for HRIS Elements scenario.",
+    "supported_use_cases": ["Default Job Title from Job Classification"],
+    "trigger_event": "onChange",
+    "base_object_entity": "Job Information Model; rule assigned to Job Classification field",
+    "configuration_logic": "IF Job Classification changes THEN set Job Information.Job Title from the selected Job Classification value.",
+    "important_limitations": [
+      "This is business-rule-driven field defaulting and should not be conflated with effective-dated forward propagation.",
+      "The target field must be usable/editable according to the data model and permissions."
+    ],
+    "source_url": "https://help.sap.com/doc/cc751d98800d414ca72fc4695a9bf3e7/2611/en-US/SF_EC_Master_Impl.pdf"
+  },
+  {
+    "title": "Cross-Entity Rules Overview",
+    "topic": "cross_entity_rules",
+    "source_section": "7.9 Cross-Entity Rules",
+    "page": 625,
+    "source_summary": "Cross-Entity Rules update a related target entity when a supported source entity changes. A documented use case is that changes to Job Information, for example pay scale level or FTE, can change, create, update, or delete Recurring Pay Components. The source/target direction is important: the source entity must be the base object of the rule.",
+    "supported_use_cases": [
+      "Job Information to Compensation Information",
+      "Job Information to Job Relationships",
+      "Job Information changes, such as pay scale level or FTE, to change, create, update, or delete Recurring Pay Components",
+      "Compensation Information to Recurring Pay Components"
+    ],
+    "trigger_event": "onSave; onChange in supported UI combinations",
+    "base_object_entity": "The source HRIS entity",
+    "configuration_logic": "WHEN a supported source entity such as Job Information changes THEN change, create, update, or delete supported data in the related target entity using supported expressions. For this Cross-Entity Rules use case, the source entity must be the rule base object.",
+    "important_limitations": [
+      "Cross-entity rules are supported only for documented HRIS entities.",
+      "onSave is supported for UI, API and imports when the source is modified.",
+      "onChange requires both entities in the supported MSS transaction and is not supported for APIs/imports.",
+      "The source element must be the rule base object."
+    ],
+    "source_url": "https://help.sap.com/doc/cc751d98800d414ca72fc4695a9bf3e7/2611/en-US/SF_EC_Master_Impl.pdf"
+  },
+  {
+    "title": "Cross-Entity Set, Create, and Delete Restrictions",
+    "topic": "cross_entity_rules",
+    "source_section": "7.9 Cross-Entity Rules - Rules Using the Create/Set/Delete Expression",
+    "page": 627,
+    "source_summary": "Cross-entity rule capabilities depend on the source/target pair and the selected Set, Create, or Delete expression. Job Information and Compensation Information targets require Set; Create must not be used to create those target records.",
+    "supported_use_cases": [
+      "Create or update supported target records",
+      "Delete supported target records such as recurring pay components where allowed"
+    ],
+    "trigger_event": "Depends on supported source/target pair; commonly onSave and in some combinations onChange",
+    "base_object_entity": "Source HRIS entity",
+    "configuration_logic": "Use only the expression type documented as supported for the specific source/target pair.",
+    "important_limitations": [
+      "Do not use Create for Job Information or Compensation Information targets.",
+      "Job Information and Compensation Information records cannot be deleted with the Delete function in a business rule.",
+      "Support differs by source/target pair; consult the matrix before implementation."
+    ],
+    "source_url": "https://help.sap.com/doc/cc751d98800d414ca72fc4695a9bf3e7/2611/en-US/SF_EC_Master_Impl.pdf"
+  },
+  {
+    "title": "Cross-Entity Event Reason Handling",
+    "topic": "cross_entity_rules",
+    "source_section": "7.9 Cross-Entity Rules - Event Reason Derivation",
+    "page": 627,
+    "source_summary": "When Event Reason Derivation is used with a cross-entity rule, the target entity inherits the source Event Reason. If the source has no Event Reason field and the rule creates Job Information or Compensation Information, the Event Reason must be set by the rule or supplied through an applicable fallback configuration.",
+    "supported_use_cases": [
+      "Ensure valid Event Reason when cross-entity logic creates Job Information or Compensation Information"
+    ],
+    "trigger_event": "Cross-entity save processing",
+    "base_object_entity": "Source entity; target Job Information or Compensation Information",
+    "configuration_logic": "Ensure the target Event Reason can be inherited, explicitly set, or derived from an applicable fallback.",
+    "important_limitations": [
+      "Missing Event Reason can cause the transaction to fail.",
+      "Fallback Event Reason is an exception documented for applicable Job Information target scenarios."
+    ],
+    "source_url": "https://help.sap.com/doc/cc751d98800d414ca72fc4695a9bf3e7/2611/en-US/SF_EC_Master_Impl.pdf"
+  },
+  {
+    "title": "Rule Contexts for onSave and onChange",
+    "topic": "rule_context",
+    "source_section": "7.10 Adding Contexts for Business Rules",
+    "page": 633,
+    "source_summary": "Rule contexts restrict where an onSave or onChange HRIS-element rule executes. Without contexts, a rule runs whenever its rule conditions are met. Once at least one context is configured, the rule is limited to the selected transaction contexts, while transactions that have no explicit context can still trigger rules.",
+    "supported_use_cases": [
+      "Limit validation to specific transaction types",
+      "Restrict ERD or other rules to selected UI or processing contexts",
+      "Avoid unnecessary rule execution"
+    ],
+    "trigger_event": "onSave or onChange",
+    "base_object_entity": "HRIS elements",
+    "configuration_logic": "Add contexts in BCUI and set only the transaction contexts where the rule should execute.",
+    "important_limitations": [
+      "Rule contexts apply only to HRIS elements, not MDF objects.",
+      "Rule contexts apply only to onSave and onChange, not onInit/onView/onPostSave.",
+      "Transactions without their own explicit context may trigger all configured rules regardless of selected contexts."
+    ],
+    "source_url": "https://help.sap.com/doc/cc751d98800d414ca72fc4695a9bf3e7/2611/en-US/SF_EC_Master_Impl.pdf"
+  },
+  {
+    "title": "Available Employee Central Rule Contexts",
+    "topic": "rule_context",
+    "source_section": "7.10 Adding Contexts for Business Rules",
+    "page": 634,
+    "source_summary": "Employee Central provides a defined set of transaction contexts for HRIS-element onSave/onChange rules, including Edit (MSS/ESS), Internal Hire, History, Imports, Mass Changes, Hire, Onboarding, Publish from Compensation Planning, Report No-Shows, Off Cycle Event Batch, Termination, and API.",
+    "supported_use_cases": [
+      "Choose which transaction channels should execute a rule"
+    ],
+    "trigger_event": "onSave or onChange",
+    "base_object_entity": "HRIS elements",
+    "configuration_logic": "Set the applicable contexts to Yes and contexts that should not execute the rule to No.",
+    "important_limitations": [
+      "If no contexts are configured, rule conditions alone determine execution.",
+      "Context support varies by rule type."
+    ],
+    "source_url": "https://help.sap.com/doc/cc751d98800d414ca72fc4695a9bf3e7/2611/en-US/SF_EC_Master_Impl.pdf"
+  },
+  {
+    "title": "Rule Type Support by Context",
+    "topic": "rule_context",
+    "source_section": "7.10 Adding Contexts for Business Rules - Context/Rule Type matrix",
+    "page": 635,
+    "source_summary": "The SAP guide provides a support matrix showing that not every rule type is supported in every context. For example, History does not support Workflow Derivation or Event Reason Derivation, Mass Changes does not support Workflow Derivation, Event Reason Derivation, Validation, or Cross-Entity rules, and Hire/Rehire supports Workflow Derivation and Validation but not ERD, Cross-Entity, or Forward Propagation.",
+    "supported_use_cases": [
+      "Validate whether a rule type is supported in a chosen transaction context"
+    ],
+    "trigger_event": "Context-dependent",
+    "base_object_entity": "HRIS elements",
+    "configuration_logic": "Check the context/rule-type support matrix before assigning or relying on a rule in that context.",
+    "important_limitations": [
+      "Do not infer support from another context.",
+      "The Imports/Workflow Derivation cell is worded ambiguously in the guide ('No / Only when workflows are disabled for imports'); do not convert that cell into a definitive positive-support statement without separate SAP documentation.",
+      "Onboarding does not support the listed Workflow Derivation, ERD, Validation, Cross-Entity, or Forward Propagation rule types in this matrix."
+    ],
+    "source_url": "https://help.sap.com/doc/cc751d98800d414ca72fc4695a9bf3e7/2611/en-US/SF_EC_Master_Impl.pdf"
+  }
+]
