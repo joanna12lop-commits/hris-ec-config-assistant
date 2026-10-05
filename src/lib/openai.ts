@@ -47,6 +47,7 @@ export type AnalysisAnswer = {
   trigger: string;
   baseObject: string;
   targetEntity: string;
+  targetField: string;
   whyThisApproach: string;
   suggestedLogic: string;
   configurationGuidance: string[];
@@ -147,6 +148,7 @@ function normalizeGeneratedAnalysisAnswer(
     trigger: stringField("trigger"),
     baseObject: stringField("baseObject"),
     targetEntity: stringField("targetEntity"),
+    targetField: stringField("targetField"),
     whyThisApproach: stringField("whyThisApproach"),
     suggestedLogic: stringField("suggestedLogic"),
     configurationGuidance: normalizeSteps(answer.configurationGuidance),
@@ -393,6 +395,7 @@ export async function generateGroundedAnswer(
           "relevantArea must be a concise functional area, not a documentation section heading. Prefer Employee Central Business Rules, Workflow Derivation, Event Reason Derivation, or Cross-Entity Rules when supported by context.",
           "whyThisApproach must explain why the documented configuration fits this request and may distinguish it from nearby concepts only when the retrieved sources support that distinction. Do not treat the requested behavior as proof of undocumented rule details.",
           "targetEntity must be the documented target entity when clearly stated in a selected source; otherwise return an empty string.",
+          "Use targetField instead of targetEntity when the requested result is a field in the same entity as the base object. Return an empty targetEntity in that case. For a separate entity target, return targetEntity and leave targetField empty. Only name a field/entity that is clearly supported by selected sources.",
           "configurationGuidance must contain 2 to 5 concise, practical steps grounded in retrieved sources. Return each as an object with step and evidence fields. evidence must be an exact contiguous excerpt copied from a retrieved sourceContent that supports the step. Separate documented setup facts from missing detail. Never invent a field-level condition, condition expression, rule assignment, specific operation, or implementation procedure unless the selected source explicitly documents it. If exact setup detail is absent, say so and make the step a verification of supported source/target/operation rather than fabricating configuration steps.",
           "Write for an HRIS analyst who may be new to SuccessFactors configuration. Make the answer educational, not documentation-like. For whyThisApproach, configurationGuidance, importantConsiderations, and validationSteps, explain the idea in plain English first, then say why it matters for the user's requirement. Keep SAP terms where useful, but briefly define each technical term in the same sentence the first time it appears.",
           "Use short sentences and concise bullets/steps. Explain terms such as supported change, transaction context, source entity, target entity, rule base object, Workflow Derivation, and Event Reason Derivation in everyday language when they are needed. For example, explain that the base object is the entity where the change starts, and explain that a supported change is a change type SAP allows that rule to handle.",
@@ -404,7 +407,7 @@ export async function generateGroundedAnswer(
           "validationSteps must contain 2 to 4 practical analyst checks derived from the documented behavior. Return each as an object with step and evidence fields; evidence must be an exact contiguous excerpt from a retrieved sourceContent supporting the behavior being checked. They may describe changing documented source data and checking the documented target result, but must not introduce unrelated concepts unless a selected source discusses them.",
           "The retrieved context is a list of structured source records. Each record has separate sourceTitle, sourceSection, and sourceContent fields; do not concatenate adjacent field values. Select only records that materially support the answer fields. Prefer one strong source over weak or redundant sources. Do not cite every retrieved source by default.",
           "For each selected source, return its exact title, exact section, and an exact contiguous evidence excerpt from its sourceContent that directly supports the answer. Do not cite a source merely because it is semantically related. Do not cite any source that does not support the recommendation, trigger, base object, logic, explanation, or considerations.",
-          "Return one JSON object with exactly these string fields: recommendedConfiguration, relevantArea, trigger, baseObject, targetEntity, whyThisApproach, suggestedLogic, explanation; configurationGuidance and validationSteps arrays of objects containing step and evidence strings; importantConsiderations as an array of strings; and sources as an array of objects containing title, section, and evidence strings.",
+          "Return one JSON object with exactly these string fields: recommendedConfiguration, relevantArea, trigger, baseObject, targetEntity, targetField, whyThisApproach, suggestedLogic, explanation; configurationGuidance and validationSteps arrays of objects containing step and evidence strings; importantConsiderations as an array of strings; and sources as an array of objects containing title, section, and evidence strings.",
         ].join(" "),
       },
       {
@@ -473,6 +476,7 @@ export async function generateGroundedAnswer(
       trigger: "",
       baseObject: "",
       targetEntity: "",
+      targetField: "",
       whyThisApproach:
         "The retrieved sources do not provide enough information to select and justify a configuration approach.",
       suggestedLogic: "",
@@ -505,11 +509,46 @@ export async function generateGroundedAnswer(
     query,
     selectedChunks,
   );
-  const targetEntity = contextText
+  let targetEntity = contextText
     .toLowerCase()
     .includes(generatedAnswer.targetEntity.trim().toLowerCase())
     ? generatedAnswer.targetEntity
     : "";
+  let targetField = contextText
+    .toLowerCase()
+    .includes(generatedAnswer.targetField.trim().toLowerCase())
+    ? generatedAnswer.targetField
+    : "";
+
+  const fieldTargets = Array.from(
+    contextText.matchAll(
+      /(?:Job Information\.)?(?:set|default|update)\s+Job Information\.([A-Z][A-Za-z ]+?)\s+from\b/gi,
+    ),
+    ([, field]) => field.trim(),
+  );
+  if (!targetField && targetEntity && baseObject) {
+    const normalizedTargetEntity = targetEntity.toLowerCase();
+    const normalizedBaseEntity = baseObject.toLowerCase();
+    const sameEntityTarget =
+      normalizedTargetEntity === normalizedBaseEntity ||
+      normalizedBaseEntity.includes(normalizedTargetEntity);
+    const namedField = fieldTargets.find((field) =>
+      query.toLowerCase().includes(field.toLowerCase()),
+    );
+    if (sameEntityTarget && namedField) targetField = namedField;
+  }
+  if (targetField) targetEntity = "";
+
+  let normalizedBaseObject = baseObject;
+  if (
+    /scenario-supported|model base object|depending on scenario/i.test(
+      baseObject,
+    )
+  ) {
+    normalizedBaseObject = /workflow/i.test(`${baseObject} ${contextText}`)
+      ? "Depends on the supported Employee Central area used for the workflow"
+      : "Depends on the supported Employee Central area";
+  }
   const importantConsiderations =
     generatedAnswer.importantConsiderations.filter((item) =>
       isSupportedConsideration(item, selectedChunks),
@@ -600,8 +639,9 @@ export async function generateGroundedAnswer(
     recommendedConfiguration,
     relevantArea,
     trigger,
-    baseObject,
+    baseObject: normalizedBaseObject,
     targetEntity,
+    targetField,
     configurationGuidance,
     importantConsiderations,
     validationSteps,

@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 
 const responseCacheTtlMs = 15 * 60 * 1000;
 const maximumCachedResponses = 500;
-const answerSchemaVersion = "analysis-answer-v2";
+const answerSchemaVersion = "analysis-answer-v3";
 
 type CachedAnswer = {
   answer: AnalysisAnswer;
@@ -51,6 +51,7 @@ function notEnoughInformation(): AnalysisAnswer {
     trigger: "",
     baseObject: "",
     targetEntity: "",
+    targetField: "",
     whyThisApproach:
       "The retrieved documentation does not contain enough information to choose a configuration approach.",
     suggestedLogic: "",

@@ -9,6 +9,7 @@ type AnalysisResponse = {
   trigger: string;
   baseObject: string;
   targetEntity: string;
+  targetField: string;
   whyThisApproach: string;
   suggestedLogic: string;
   configurationGuidance: string[];
@@ -64,6 +65,7 @@ function isAnalysisResponse(value: unknown): value is AnalysisResponse {
     typeof response.trigger === "string" &&
     typeof response.baseObject === "string" &&
     typeof response.targetEntity === "string" &&
+    typeof response.targetField === "string" &&
     typeof response.whyThisApproach === "string" &&
     typeof response.suggestedLogic === "string" &&
     Array.isArray(response.configurationGuidance) &&
@@ -188,16 +190,21 @@ function ResultCard({ result }: { result: AnalysisResponse | null }) {
       <div className="result-section">
         <p className="field-label">Why this approach</p>
         <p className="result-body-copy">
-          {result?.whyThisApproach ?? "Run an analysis to see why a configuration approach fits."}
+          {result?.whyThisApproach ??
+            "Run an analysis to see why a configuration approach fits."}
         </p>
       </div>
 
-      <div className="result-section">
-        <p className="field-label">Target Entity</p>
-        <p className="result-body-copy">
-          {result?.targetEntity || (result ? unspecified : "-")}
-        </p>
-      </div>
+      {result && (result.targetField || result.targetEntity) && (
+        <div className="result-section">
+          <p className="field-label">
+            {result.targetField ? "Target Field" : "Target Entity"}
+          </p>
+          <p className="result-body-copy">
+            {result.targetField || result.targetEntity}
+          </p>
+        </div>
+      )}
 
       <div className="result-section">
         <p className="field-label">Configuration Guidance</p>
@@ -209,7 +216,9 @@ function ResultCard({ result }: { result: AnalysisResponse | null }) {
           </ol>
         ) : (
           <p className="result-empty-note">
-            {result ? "The retrieved documentation is insufficient for detailed configuration steps." : "-"}
+            {result
+              ? "The retrieved documentation is insufficient for detailed configuration steps."
+              : "-"}
           </p>
         )}
       </div>
@@ -247,7 +256,9 @@ function ResultCard({ result }: { result: AnalysisResponse | null }) {
           </ol>
         ) : (
           <p className="result-empty-note">
-            {result ? "No validation steps were supported by the retrieved documentation." : "-"}
+            {result
+              ? "No validation steps were supported by the retrieved documentation."
+              : "-"}
           </p>
         )}
       </div>
