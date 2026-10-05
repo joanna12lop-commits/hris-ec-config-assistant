@@ -8,9 +8,13 @@ type AnalysisResponse = {
   relevantArea: string;
   trigger: string;
   baseObject: string;
+  targetEntity: string;
+  whyThisApproach: string;
   suggestedLogic: string;
+  configurationGuidance: string[];
   explanation: string;
   importantConsiderations: string[];
+  validationSteps: string[];
   sources: { title: string; section: string }[];
   cached: boolean;
 };
@@ -43,9 +47,9 @@ function subscribeToSessionRequestCount(onChange: () => void): () => void {
 }
 
 const examples = [
-  "Location change should update timezone",
-  "Salary increase should require approval",
-  "Show only promotions in job history",
+  "FTE change should update a recurring pay component",
+  "Salary increase above 10% should require approval",
+  "Job Classification change should update Job Title",
 ];
 
 function isAnalysisResponse(value: unknown): value is AnalysisResponse {
@@ -59,13 +63,19 @@ function isAnalysisResponse(value: unknown): value is AnalysisResponse {
     typeof response.relevantArea === "string" &&
     typeof response.trigger === "string" &&
     typeof response.baseObject === "string" &&
+    typeof response.targetEntity === "string" &&
+    typeof response.whyThisApproach === "string" &&
     typeof response.suggestedLogic === "string" &&
+    Array.isArray(response.configurationGuidance) &&
+    response.configurationGuidance.every((item) => typeof item === "string") &&
     typeof response.explanation === "string" &&
     typeof response.cached === "boolean" &&
     Array.isArray(response.importantConsiderations) &&
     response.importantConsiderations.every(
       (item) => typeof item === "string",
     ) &&
+    Array.isArray(response.validationSteps) &&
+    response.validationSteps.every((item) => typeof item === "string") &&
     Array.isArray(response.sources) &&
     response.sources.every(
       (source) =>
@@ -175,6 +185,35 @@ function ResultCard({ result }: { result: AnalysisResponse | null }) {
         </pre>
       </div>
 
+      <div className="result-section">
+        <p className="field-label">Why this approach</p>
+        <p className="result-body-copy">
+          {result?.whyThisApproach ?? "Run an analysis to see why a configuration approach fits."}
+        </p>
+      </div>
+
+      <div className="result-section">
+        <p className="field-label">Target Entity</p>
+        <p className="result-body-copy">
+          {result?.targetEntity || (result ? unspecified : "-")}
+        </p>
+      </div>
+
+      <div className="result-section">
+        <p className="field-label">Configuration Guidance</p>
+        {result?.configurationGuidance.length ? (
+          <ol className="guidance-list">
+            {result.configurationGuidance.map((step, index) => (
+              <li key={`${index}-${step}`}>{step}</li>
+            ))}
+          </ol>
+        ) : (
+          <p className="result-empty-note">
+            {result ? "The retrieved documentation is insufficient for detailed configuration steps." : "-"}
+          </p>
+        )}
+      </div>
+
       <div className="result-section explanation-section">
         <p className="field-label">Explanation</p>
         <p>
@@ -194,6 +233,21 @@ function ResultCard({ result }: { result: AnalysisResponse | null }) {
           <p className="result-empty-note">
             No additional considerations were identified in retrieved
             documentation.
+          </p>
+        )}
+      </div>
+
+      <div className="result-section">
+        <p className="field-label">Validation / Testing</p>
+        {result?.validationSteps.length ? (
+          <ol className="guidance-list">
+            {result.validationSteps.map((step, index) => (
+              <li key={`${index}-${step}`}>{step}</li>
+            ))}
+          </ol>
+        ) : (
+          <p className="result-empty-note">
+            {result ? "No validation steps were supported by the retrieved documentation." : "-"}
           </p>
         )}
       </div>
