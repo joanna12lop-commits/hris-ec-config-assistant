@@ -13,6 +13,7 @@ export const dynamic = "force-dynamic";
 
 const responseCacheTtlMs = 15 * 60 * 1000;
 const maximumCachedResponses = 500;
+const answerSchemaVersion = "analysis-answer-v2";
 
 type CachedAnswer = {
   answer: AnalysisAnswer;
@@ -20,6 +21,24 @@ type CachedAnswer = {
 };
 
 const analysisCache = new Map<string, CachedAnswer>();
+
+function safeErrorDetails(error: unknown) {
+  const message =
+    error instanceof Error ? error.message : "Unknown server error";
+  const name = error instanceof Error ? error.name : "UnknownError";
+  const stack = error instanceof Error ? error.stack : undefined;
+  const redactCredentials = (value: string) =>
+    value.replace(
+      /(?:sk-[A-Za-z0-9_-]{12,}|sb_secret_[A-Za-z0-9_-]{8,})/g,
+      "[REDACTED]",
+    );
+
+  return {
+    name: redactCredentials(name),
+    message: redactCredentials(message),
+    ...(stack ? { stack: redactCredentials(stack) } : {}),
+  };
+}
 
 function isAnalysisMode(value: unknown): value is AnalysisMode {
   return value === "advisor" || value === "troubleshooter";
@@ -46,7 +65,7 @@ function notEnoughInformation(): AnalysisAnswer {
 
 function normalizedCacheKey(query: string, mode: AnalysisMode): string {
   const normalizedQuery = query.trim().toLowerCase().replace(/\s+/g, " ");
-  return JSON.stringify([normalizedQuery, mode]);
+  return JSON.stringify([answerSchemaVersion, normalizedQuery, mode]);
 }
 
 function readCache(key: string): AnalysisAnswer | undefined {
@@ -143,10 +162,12 @@ export async function POST(request: Request) {
     const answer = await generateGroundedAnswer(query.trim(), mode, chunks);
     writeCache(cacheKey, answer);
     return Response.json({ ...answer, cached: false });
-  } catch {
+  } catch (error) {
+    console.error("/api/analyze failed", safeErrorDetails(error));
     return Response.json(
       {
-        error: "Unable to analyze the request right now. Please try again later.",
+        error:
+          "Unable to analyze the request right now. Please try again later.",
       },
       { status: 500 },
     );

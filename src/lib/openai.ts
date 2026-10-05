@@ -96,41 +96,71 @@ function isGeneratedStep(value: unknown): value is EvidenceStep | string {
   return typeof value === "string" || isEvidenceStep(value);
 }
 
-function isGeneratedAnalysisAnswer(
+function normalizeGeneratedAnalysisAnswer(
   value: unknown,
-): value is GeneratedAnalysisAnswer {
+): GeneratedAnalysisAnswer | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return false;
+    return null;
   }
 
   const answer = value as Record<string, unknown>;
-  return (
-    typeof answer.recommendedConfiguration === "string" &&
-    typeof answer.relevantArea === "string" &&
-    typeof answer.trigger === "string" &&
-    typeof answer.baseObject === "string" &&
-    typeof answer.targetEntity === "string" &&
-    typeof answer.whyThisApproach === "string" &&
-    typeof answer.suggestedLogic === "string" &&
-    Array.isArray(answer.configurationGuidance) &&
-    answer.configurationGuidance.every(isGeneratedStep) &&
-    typeof answer.explanation === "string" &&
-    Array.isArray(answer.importantConsiderations) &&
-    answer.importantConsiderations.every((item) => typeof item === "string") &&
-    Array.isArray(answer.validationSteps) &&
-    answer.validationSteps.every(isGeneratedStep) &&
-    Array.isArray(answer.sources) &&
-    answer.sources.every(
-      (source) =>
-        typeof source === "object" &&
-        source !== null &&
-        !Array.isArray(source) &&
-        typeof (source as Record<string, unknown>).title === "string" &&
-        typeof (source as Record<string, unknown>).section === "string" &&
-        ((source as Record<string, unknown>).evidence === undefined ||
-          typeof (source as Record<string, unknown>).evidence === "string"),
-    )
-  );
+  const normalizeSteps = (steps: unknown): (EvidenceStep | string)[] => {
+    if (!Array.isArray(steps)) return [];
+    return steps.filter(isGeneratedStep);
+  };
+  const sources: GeneratedSource[] = Array.isArray(answer.sources)
+    ? answer.sources.flatMap((source) => {
+        if (
+          typeof source !== "object" ||
+          source === null ||
+          Array.isArray(source)
+        ) {
+          return [];
+        }
+
+        const item = source as Record<string, unknown>;
+        if (
+          typeof item.title !== "string" ||
+          typeof item.section !== "string"
+        ) {
+          return [];
+        }
+
+        return [
+          {
+            title: item.title,
+            section: item.section,
+            ...(typeof item.evidence === "string"
+              ? { evidence: item.evidence }
+              : {}),
+          },
+        ];
+      })
+    : [];
+
+  const stringField = (field: string) =>
+    typeof answer[field] === "string" ? (answer[field] as string) : "";
+
+  return {
+    recommendedConfiguration: stringField("recommendedConfiguration"),
+    relevantArea: stringField("relevantArea"),
+    trigger: stringField("trigger"),
+    baseObject: stringField("baseObject"),
+    targetEntity: stringField("targetEntity"),
+    whyThisApproach: stringField("whyThisApproach"),
+    suggestedLogic: stringField("suggestedLogic"),
+    configurationGuidance: normalizeSteps(answer.configurationGuidance),
+    explanation:
+      stringField("explanation") ||
+      "The retrieved sources support the configuration type but do not provide further explanatory detail.",
+    importantConsiderations: Array.isArray(answer.importantConsiderations)
+      ? answer.importantConsiderations.filter(
+          (item): item is string => typeof item === "string",
+        )
+      : [],
+    validationSteps: normalizeSteps(answer.validationSteps),
+    sources,
+  };
 }
 
 function normalizeWords(value: string): string[] {
@@ -358,7 +388,7 @@ export async function generateGroundedAnswer(
           "Do not invent Admin Center paths, rule scenarios, triggers, base objects, or configuration details.",
           "Choose the configuration type from the directly applicable documented use case, not incidental semantic overlap. When a request asks to update or create data in another supported entity from a changed source entity, prefer Cross-Entity Rules. Recommend Workflow Derivation only when the requirement explicitly asks to trigger, select, or assign an approval workflow.",
           "For Cross-Entity Rules, the source entity is the base object. If a retrieved supported-use-case explicitly states 'Source Entity to Target Entity' and the request clearly names that target, report the documented source entity as baseObject.",
-                    "Do not invent a field-level condition, rule trigger registration, or expression from a source that only gives a field-change example. State only the documented source/target behavior and supported trigger information.",
+          "Do not invent a field-level condition, rule trigger registration, or expression from a source that only gives a field-change example. State only the documented source/target behavior and supported trigger information.",
           "recommendedConfiguration must be only a concise configuration type, not a sentence. Prefer labels such as onChange Business Rule, Workflow Derivation Rule, Event Reason Derivation Rule, or Cross-Entity Rule when supported by context.",
           "relevantArea must be a concise functional area, not a documentation section heading. Prefer Employee Central Business Rules, Workflow Derivation, Event Reason Derivation, or Cross-Entity Rules when supported by context.",
           "whyThisApproach must explain why the documented configuration fits this request and may distinguish it from nearby concepts only when the retrieved sources support that distinction. Do not treat the requested behavior as proof of undocumented rule details.",
@@ -370,8 +400,8 @@ export async function generateGroundedAnswer(
           "Include directly relevant documented limitations, prerequisites, supported triggers, source/target restrictions, and processing-context restrictions in importantConsiderations. Return an empty array only when the selected sources contain no applicable cautions. Do not add generic testing or best-practice advice.",
           "validationSteps must contain 2 to 4 practical analyst checks derived from the documented behavior. Return each as an object with step and evidence fields; evidence must be an exact contiguous excerpt from a retrieved sourceContent supporting the behavior being checked. They may describe changing documented source data and checking the documented target result, but must not introduce unrelated concepts unless a selected source discusses them.",
           "The retrieved context is a list of structured source records. Each record has separate sourceTitle, sourceSection, and sourceContent fields; do not concatenate adjacent field values. Select only records that materially support the answer fields. Prefer one strong source over weak or redundant sources. Do not cite every retrieved source by default.",
-            "For each selected source, return its exact title, exact section, and an exact contiguous evidence excerpt from its sourceContent that directly supports the answer. Do not cite a source merely because it is semantically related. Do not cite any source that does not support the recommendation, trigger, base object, logic, explanation, or considerations.",
-            "Return one JSON object with exactly these string fields: recommendedConfiguration, relevantArea, trigger, baseObject, targetEntity, whyThisApproach, suggestedLogic, explanation; configurationGuidance and validationSteps arrays of objects containing step and evidence strings; importantConsiderations as an array of strings; and sources as an array of objects containing title, section, and evidence strings.",
+          "For each selected source, return its exact title, exact section, and an exact contiguous evidence excerpt from its sourceContent that directly supports the answer. Do not cite a source merely because it is semantically related. Do not cite any source that does not support the recommendation, trigger, base object, logic, explanation, or considerations.",
+          "Return one JSON object with exactly these string fields: recommendedConfiguration, relevantArea, trigger, baseObject, targetEntity, whyThisApproach, suggestedLogic, explanation; configurationGuidance and validationSteps arrays of objects containing step and evidence strings; importantConsiderations as an array of strings; and sources as an array of objects containing title, section, and evidence strings.",
         ].join(" "),
       },
       {
@@ -402,7 +432,8 @@ export async function generateGroundedAnswer(
     throw new Error("The answer model returned invalid JSON.");
   }
 
-  if (!isGeneratedAnalysisAnswer(parsed)) {
+  const generatedAnswer = normalizeGeneratedAnalysisAnswer(parsed);
+  if (!generatedAnswer) {
     throw new Error("The answer model returned an unexpected response format.");
   }
 
@@ -414,14 +445,15 @@ export async function generateGroundedAnswer(
   );
   const selectedChunks = Array.from(
     new Set(
-      parsed.sources
+      generatedAnswer.sources
         .filter((source) => {
           const chunk = chunksByCitation.get(
             citationKey(source.title, source.section),
           );
-          return chunk && (
-            !source.evidence ||
-            isEvidenceSupported({ evidence: source.evidence }, [chunk])
+          return (
+            chunk &&
+            (!source.evidence ||
+              isEvidenceSupported({ evidence: source.evidence }, [chunk]))
           );
         })
         .map(({ title, section }) => citationKey(title, section)),
@@ -456,7 +488,9 @@ export async function generateGroundedAnswer(
   const explicitTriggers = Array.from(
     new Set(contextText.match(/\bon[A-Z][A-Za-z0-9]*\b/g) ?? []),
   );
-  const requestedTrigger = parsed.trigger.match(/\bon[A-Z][A-Za-z0-9]*\b/)?.[0];
+  const requestedTrigger = generatedAnswer.trigger.match(
+    /\bon[A-Z][A-Za-z0-9]*\b/,
+  )?.[0];
   const trigger =
     requestedTrigger && explicitTriggers.includes(requestedTrigger)
       ? requestedTrigger
@@ -464,23 +498,25 @@ export async function generateGroundedAnswer(
         ? explicitTriggers[0]
         : "";
   const baseObject = resolveBaseObject(
-    parsed.baseObject,
+    generatedAnswer.baseObject,
     query,
     selectedChunks,
   );
   const targetEntity = contextText
     .toLowerCase()
-    .includes(parsed.targetEntity.trim().toLowerCase())
-    ? parsed.targetEntity
+    .includes(generatedAnswer.targetEntity.trim().toLowerCase())
+    ? generatedAnswer.targetEntity
     : "";
-  const importantConsiderations = parsed.importantConsiderations.filter(
-    (item) => isSupportedConsideration(item, selectedChunks),
-  );
-  const configurationGuidance = parsed.configurationGuidance
-    .filter((step) =>
-      typeof step === "string" || isEvidenceSupported(step, selectedChunks),
+  const importantConsiderations =
+    generatedAnswer.importantConsiderations.filter((item) =>
+      isSupportedConsideration(item, selectedChunks),
+    );
+  const configurationGuidance = generatedAnswer.configurationGuidance
+    .filter(
+      (step) =>
+        typeof step === "string" || isEvidenceSupported(step, selectedChunks),
     )
-    .map((step) => typeof step === "string" ? step : step.step)
+    .map((step) => (typeof step === "string" ? step : step.step))
     .slice(0, 5);
   const hasSpecificSetupDetails =
     /Manage Business Configuration|Business Configuration UI|BCUI|field-level condition|specific expression/i.test(
@@ -492,11 +528,12 @@ export async function generateGroundedAnswer(
       "The retrieved documentation does not specify the exact setup path, field-level condition, or expression for this use case; confirm those details for the supported scenario before implementation.",
     );
   }
-  const validationSteps = parsed.validationSteps
-    .filter((step) =>
-      typeof step === "string" || isEvidenceSupported(step, selectedChunks),
+  const validationSteps = generatedAnswer.validationSteps
+    .filter(
+      (step) =>
+        typeof step === "string" || isEvidenceSupported(step, selectedChunks),
     )
-    .map((step) => typeof step === "string" ? step : step.step)
+    .map((step) => (typeof step === "string" ? step : step.step))
     .slice(0, 4);
 
   if (configurationGuidance.length < 2) {
@@ -516,9 +553,11 @@ export async function generateGroundedAnswer(
   if (validationSteps.length < 2 && baseObject && targetEntity) {
     const sourceTargetChunk = selectedChunks.find((chunk) => {
       const content = chunk.content.toLowerCase();
-      return content.includes(baseObject.toLowerCase()) &&
+      return (
+        content.includes(baseObject.toLowerCase()) &&
         content.includes(targetEntity.toLowerCase()) &&
-        content.includes("must be the base object");
+        content.includes("must be the base object")
+      );
     });
 
     if (sourceTargetChunk) {
@@ -545,7 +584,7 @@ export async function generateGroundedAnswer(
     section,
   }));
   const recommendedConfiguration = conciseConfiguration(
-    parsed.recommendedConfiguration,
+    generatedAnswer.recommendedConfiguration,
     contextText,
   );
   const relevantArea = conciseRelevantArea(
@@ -554,7 +593,7 @@ export async function generateGroundedAnswer(
   );
 
   return {
-    ...parsed,
+    ...generatedAnswer,
     recommendedConfiguration,
     relevantArea,
     trigger,
