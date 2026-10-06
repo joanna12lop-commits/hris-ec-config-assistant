@@ -68,6 +68,12 @@ const examples = [
   "Job Classification change should update Job Title",
 ];
 
+const troubleshootingExamples = [
+  "Workflow did not trigger after promotion",
+  "Job Title did not update after Job Classification change",
+  "Recurring pay component did not update after FTE change",
+];
+
 function isSourceArray(
   value: unknown,
 ): value is { title: string; section: string }[] {
@@ -362,6 +368,7 @@ export default function Home() {
   );
   const requestInFlight = useRef(false);
   const isAdvisor = mode === "advisor";
+  const activeExamples = isAdvisor ? examples : troubleshootingExamples;
 
   function selectMode(nextMode: Mode) {
     setMode(nextMode);
@@ -510,27 +517,25 @@ export default function Home() {
               required
             />
 
-            {isAdvisor && (
-              <div className="examples-block">
-                <p className="field-label">Try an example</p>
-                <div className="example-list">
-                  {examples.map((example) => (
-                    <button
-                      className="example-button"
-                      key={example}
-                      type="button"
-                      onClick={() => {
-                        setPrompt(example);
-                        setError("");
-                      }}
-                    >
-                      <span aria-hidden="true">+</span>
-                      {example}
-                    </button>
-                  ))}
-                </div>
+            <div className="examples-block">
+              <p className="field-label">Try an example</p>
+              <div className="example-list">
+                {activeExamples.map((example) => (
+                  <button
+                    className="example-button"
+                    key={example}
+                    type="button"
+                    onClick={() => {
+                      setPrompt(example);
+                      setError("");
+                    }}
+                  >
+                    <span aria-hidden="true">+</span>
+                    {example}
+                  </button>
+                ))}
               </div>
-            )}
+            </div>
 
             <button
               className="analyze-button"
