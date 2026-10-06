@@ -48,6 +48,12 @@ function checkConciseGuidance(answer) {
     }
   }
 }
+function checkReadableCause(answer) {
+  assert(answer.likelyCause.length <= 220);
+  assert((answer.likelyCause.match(/[.!?](?:\s|$)/g) ?? []).length <= 2);
+  assert(!/A mismatch with|Documentation states:/.test(answer.likelyCause));
+  assert(/may|still|before|not enough|does not give enough/.test(answer.likelyCause));
+}
 const dataset = JSON.parse(fs.readFileSync("data/ec_rag_chunks_cleaned.json", "utf8"));
 function chunk(title) {
   const item = dataset.find(item => item.title === title);
@@ -83,6 +89,7 @@ async function main() {
       console.log(JSON.stringify({ query, retrieved: retrieved.map(cite), answer }, null, 2));
       checkSchema(answer);
       checkConciseGuidance(answer);
+      checkReadableCause(answer);
       assert(answer.checksToPerform.length > 0);
       assert(answer.troubleshootingSteps.length > 0);
       assert(answer.sources.length > 0);
@@ -133,6 +140,8 @@ async function main() {
   const workflowAnswer = await generateGroundedAnswer("the workflow didn't trigger after promotion", "troubleshooter", [workflow, order]);
   checkSchema(workflowAnswer);
   checkConciseGuidance(workflowAnswer);
+  checkReadableCause(workflowAnswer);
+  assert.match(workflowAnswer.likelyCause, /workflow conditions may not have been met/);
   assert.equal(workflowAnswer.checksToPerform.length, 5);
   assert.equal(workflowAnswer.troubleshootingSteps.length, 4);
   assert.match(request.messages[0].content, /diagnose likely causes/);
@@ -155,6 +164,7 @@ async function main() {
   assert.equal(partial.checksToPerform.length, 1);
   assert.match(partial.checksToPerform[0], /registered for onSave/);
   assert(!JSON.stringify(partial.checksToPerform).includes("conditions"));
+  assert.match(partial.likelyCause, /cause is still unclear/);
   console.log("PASS: overlapping source evidence merged; missing facts do not create extra checks");
 
   const propagation = chunk("Forward Propagation in Job Information");
@@ -169,9 +179,21 @@ async function main() {
   const generalAnswer = await generateGroundedAnswer("Future Job Information records did not update after a correction in History UI", "troubleshooter", [propagation]);
   checkSchema(generalAnswer);
   checkConciseGuidance(generalAnswer);
+  checkReadableCause(generalAnswer);
+  assert.match(generalAnswer.likelyCause, /History UI correction may explain/);
   assert(generalAnswer.checksToPerform.length >= 1);
   assert(!JSON.stringify(generalAnswer).includes("Workflow"));
   console.log("PASS: non-workflow diagnosis using existing forward-propagation documentation");
+
+  const originalCause = generated.likelyCause;
+  generated.likelyCause = { step: "Unverified explanation", evidence: "Rules are not triggered for propagated future records." };
+  const unfamiliarCause = await generateGroundedAnswer("future-record issue", "troubleshooter", [propagation]);
+  checkReadableCause(unfamiliarCause);
+  assert.match(unfamiliarCause.likelyCause, /cause is still unclear/);
+  const withoutCause = ({ likelyCause, ...rest }) => { void likelyCause; return rest; };
+  assert.deepEqual(withoutCause(unfamiliarCause), withoutCause(generalAnswer));
+  generated.likelyCause = originalCause;
+  console.log("PASS: plain-English causes stay cautious; unfamiliar evidence adds no invented explanation");
 
   generated.checksToPerform.push({ step: "Open an invented Admin Center diagnostic log.", evidence: "This excerpt is absent from retrieved sources." }, "Unsupported plain string");
   generated.likelyCause = { step: "Invented cause", evidence: "Unsupported cause evidence" };

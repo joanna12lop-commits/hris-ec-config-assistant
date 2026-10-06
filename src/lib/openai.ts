@@ -382,6 +382,46 @@ function resolveBaseObject(
   return equallyRelevantSources.size === 1 ? bestMatch.source : "";
 }
 
+function readableTroubleshootingCause(evidence: string | null): string {
+  if (!evidence) {
+    return "The cause is still unclear. The retrieved documentation does not give enough detail to explain this issue.";
+  }
+
+  // Paraphrase only facts present in the already-verified cause excerpt.
+  // These are possible explanations, never conclusions about the user's setup.
+  const fact = normalizeEvidence(evidence);
+  if (/corrections and most deletions in history ui do not forward propagate/.test(fact)) {
+    return "A History UI correction may explain why future records stayed unchanged. Verify how the change was made; corrections do not forward propagate.";
+  }
+  if (/assign the configured (?:approval )?workflow/.test(fact)
+    && /approval conditions/.test(fact)) {
+    return "An approval condition may not have been met, or the rule may not have assigned the workflow. The exact cause still needs to be checked in your configuration.";
+  }
+  if (/conditions that determine whether a workflow should be triggered/.test(fact)) {
+    return "One of the required workflow conditions may not have been met. The exact cause still needs to be checked in your configuration.";
+  }
+  if (/trigger workflows[^.]*only[^.]*onsave/.test(fact)) {
+    return "The rule may be registered for a trigger this scenario does not support. Verify its onSave registration before confirming the cause.";
+  }
+  if (/workflow derivation[^.]*execute after standard onsave rules and after event reason derivation/.test(fact)) {
+    return "Earlier rules may have changed the values used by the workflow conditions. Check those values after standard onSave rules and any applicable Event Reason Derivation.";
+  }
+  if (/workflow[^.]*supported (?:employee )?data changes?/.test(fact)) {
+    return "The affected data change may not be supported by Workflow Derivation. Confirm support for that change before treating it as a rule failure.";
+  }
+  if (/conflicting future value or invalid association stops propagation/.test(fact)) {
+    return "A different value in a future record or an invalid association may have stopped propagation. Check the affected records before confirming the cause.";
+  }
+  if (/until a future record contains a different original value/.test(fact)) {
+    return "A future record with a different original field value may have stopped propagation. Check where the original values first differ.";
+  }
+  if (/fields are intentionally excluded from forward propagation/.test(fact)) {
+    return "The affected field may be excluded from forward propagation. Verify whether that field is on the documented exclusion list.";
+  }
+
+  return "The cause is still unclear. Check the documented behavior for this feature against the affected change before drawing a conclusion.";
+}
+
 function conciseTroubleshootingGuidance(evidence: string[]): {
   checks: string[];
   steps: string[];
@@ -644,9 +684,7 @@ async function generateGroundedTroubleshooting(
   return {
     likelyIssueArea: area
       ?? primaryChunk.source_title,
-    likelyCause: (causeEvidence ?? documentedLogic)
-      ? `A mismatch with this documented behavior may explain the issue; the actual cause is not confirmed. Documentation states: ${causeEvidence ?? documentedLogic}`
-      : "The retrieved documentation does not establish a likely cause; a specific diagnosis cannot be confirmed.",
+    likelyCause: readableTroubleshootingCause(causeEvidence ?? documentedLogic),
     checksToPerform: checks,
     troubleshootingSteps: steps,
     expectedBehavior: supportedStatement(answer.expectedBehavior)
