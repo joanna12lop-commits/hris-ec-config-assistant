@@ -601,6 +601,130 @@ code {
   }
 }
 
+/* Modest desktop enlargement; retain the existing tablet and mobile sizing. */
+@media (min-width: 900px) {
+  body {
+    font-size: 18px;
+  }
+
+  main.page-width,
+  .footer-content {
+    width: min(810px, calc(100% - 48px));
+  }
+
+  .intro {
+    max-width: 710px;
+    padding: 54px 0 36px;
+  }
+
+  .intro h1 {
+    max-width: 585px;
+    font-size: 43px;
+  }
+
+  .intro-subtitle {
+    max-width: 560px;
+    font-size: 14.5px;
+  }
+
+  .brand-monogram,
+  .prompt-label,
+  textarea,
+  .analyze-button {
+    font-size: 13.5px;
+  }
+
+  .header-note,
+  .summary-banner > p:not(.field-label),
+  .result-fact > p:not(.field-label),
+  .explanation-section > p:not(.field-label),
+  .result-body-copy,
+  .guidance-list,
+  .considerations-section li,
+  .source-item summary,
+  .source-item > :not(summary),
+  .result-empty-note {
+    font-size: 12.5px;
+  }
+
+  .eyebrow,
+  .mode-option,
+  .field-label,
+  .result-kicker,
+  .submit-notice,
+  .request-limit-note {
+    font-size: 11.25px;
+  }
+
+  .example-button,
+  .preview-status,
+  .summary-banner .field-label,
+  .result-fact .field-label,
+  .footer-content p {
+    font-size: 10.25px;
+  }
+
+  .request-panel {
+    padding: 25px 27px 17px;
+    margin-bottom: 27px;
+  }
+
+  .result-panel {
+    padding: 24px 26px 0;
+  }
+
+  .result-title {
+    font-size: 25px;
+    margin-bottom: 17px;
+  }
+
+  .mode-selector {
+    margin-bottom: 20px;
+  }
+
+  .mode-option {
+    min-height: 34px;
+    padding: 7px 15px;
+  }
+
+  textarea {
+    min-height: 148px;
+    padding: 15px 16px;
+  }
+
+  .example-list {
+    gap: 7px;
+  }
+
+  .example-button {
+    min-height: 29px;
+    padding: 6px 10px;
+  }
+
+  .analyze-button {
+    min-height: 48px;
+    margin-top: 19px;
+  }
+
+  .result-section,
+  .considerations-section {
+    padding: 16px 0;
+  }
+
+  .sources-section {
+    padding: 16px 0 18px;
+  }
+
+  .guidance-list {
+    gap: 8px;
+  }
+
+  .logic-copy {
+    font-size: 12px;
+    padding: 12px 15px;
+  }
+}
+
 @media (max-width: 600px) {
   .page-width {
     width: calc(100% - 32px);
