@@ -3,7 +3,7 @@
 import { useRef, useState, useSyncExternalStore } from "react";
 
 type Mode = "advisor" | "troubleshooter";
-type AnalysisResponse = {
+type AdvisorResponse = {
   recommendedConfiguration: string;
   relevantArea: string;
   trigger: string;
@@ -19,6 +19,21 @@ type AnalysisResponse = {
   sources: { title: string; section: string }[];
   cached: boolean;
 };
+
+type TroubleshootingResponse = {
+  likelyIssueArea: string;
+  likelyCause: string;
+  checksToPerform: string[];
+  troubleshootingSteps: string[];
+  expectedBehavior: string;
+  relevantLimitations: string[];
+  sources: { title: string; section: string }[];
+  cached: boolean;
+};
+
+type AnalysisResult =
+  | { mode: "advisor"; answer: AdvisorResponse }
+  | { mode: "troubleshooter"; answer: TroubleshootingResponse };
 
 const unspecified = "Not specified in retrieved documentation";
 const requestLimit = 3;
@@ -53,11 +68,24 @@ const examples = [
   "Job Classification change should update Job Title",
 ];
 
-function isAnalysisResponse(value: unknown): value is AnalysisResponse {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return false;
-  }
+function isSourceArray(
+  value: unknown,
+): value is { title: string; section: string }[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (source) =>
+        typeof source === "object" &&
+        source !== null &&
+        !Array.isArray(source) &&
+        typeof (source as Record<string, unknown>).title === "string" &&
+        typeof (source as Record<string, unknown>).section === "string",
+    )
+  );
+}
 
+function isAdvisorResponse(value: unknown): value is AdvisorResponse {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
   const response = value as Record<string, unknown>;
   return (
     typeof response.recommendedConfiguration === "string" &&
@@ -78,15 +106,25 @@ function isAnalysisResponse(value: unknown): value is AnalysisResponse {
     ) &&
     Array.isArray(response.validationSteps) &&
     response.validationSteps.every((item) => typeof item === "string") &&
-    Array.isArray(response.sources) &&
-    response.sources.every(
-      (source) =>
-        typeof source === "object" &&
-        source !== null &&
-        !Array.isArray(source) &&
-        typeof (source as Record<string, unknown>).title === "string" &&
-        typeof (source as Record<string, unknown>).section === "string",
-    )
+    isSourceArray(response.sources)
+  );
+}
+
+function isTroubleshootingResponse(value: unknown): value is TroubleshootingResponse {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const response = value as Record<string, unknown>;
+  return (
+    typeof response.likelyIssueArea === "string" &&
+    typeof response.likelyCause === "string" &&
+    Array.isArray(response.checksToPerform) &&
+    response.checksToPerform.every((item) => typeof item === "string") &&
+    Array.isArray(response.troubleshootingSteps) &&
+    response.troubleshootingSteps.every((item) => typeof item === "string") &&
+    typeof response.expectedBehavior === "string" &&
+    Array.isArray(response.relevantLimitations) &&
+    response.relevantLimitations.every((item) => typeof item === "string") &&
+    typeof response.cached === "boolean" &&
+    isSourceArray(response.sources)
   );
 }
 function ModeSelector({
@@ -122,150 +160,155 @@ function ModeSelector({
   );
 }
 
-function ResultCard({ result }: { result: AnalysisResponse | null }) {
+function ResultCard({ result, mode }: { result: AnalysisResult | null; mode: Mode }) {
+  const isTroubleshooter = mode === "troubleshooter";
+  const troubleshooting = result?.mode === "troubleshooter"
+    ? result.answer
+    : null;
+  const advisor = result?.mode === "advisor" ? result.answer : null;
+  const sources = result?.answer.sources ?? [];
+
   return (
     <section className="result-panel" aria-labelledby="result-title">
       <div className="result-topline">
-        <span className="result-kicker">Configuration guidance</span>
+        <span className="result-kicker">
+          {isTroubleshooter ? "TROUBLESHOOTING GUIDANCE" : "Configuration guidance"}
+        </span>
         <span className="preview-status">
           <span />
           {result ? "Retrieved guidance" : "Awaiting request"}
         </span>
       </div>
 
-      <h2 className="result-title" id="result-title">
-        Recommended approach
-      </h2>
+      {isTroubleshooter ? (
+        <>
+          <h2 className="result-title" id="result-title">
+            Troubleshooting guidance
+          </h2>
 
-      <div className="summary-banner">
-        <p className="field-label">Recommended configuration</p>
-        <p>
-          {result?.recommendedConfiguration ??
-            "Run an analysis to see a recommendation."}
-        </p>
-      </div>
+          <div className="summary-banner">
+            <p className="field-label">Likely issue area</p>
+            <p>{troubleshooting?.likelyIssueArea || unspecified}</p>
+          </div>
 
-      <div className="result-facts">
-        <div className="result-fact">
-          <p className="field-label">Recommended Configuration</p>
-          <p>{result?.recommendedConfiguration ?? "-"}</p>
-        </div>
-        <div className="result-fact">
-          <p className="field-label">Relevant Area</p>
-          <p>{result?.relevantArea || (result ? unspecified : "-")}</p>
-        </div>
-        <div className="result-fact">
-          <p className="field-label">Trigger</p>
-          <p>
-            {result?.trigger ? (
-              <code>{result.trigger}</code>
-            ) : result ? (
-              unspecified
+          <div className="result-section">
+            <p className="field-label">What may be happening</p>
+            <p className="result-body-copy">
+              {troubleshooting?.likelyCause || "The retrieved sources do not identify a likely cause."}
+            </p>
+          </div>
+
+          <TroubleshootingList
+            title="Checks to perform"
+            items={troubleshooting?.checksToPerform ?? []}
+            emptyText="The retrieved sources do not support specific checks for this issue."
+          />
+          <TroubleshootingList
+            title="Troubleshooting steps"
+            items={troubleshooting?.troubleshootingSteps ?? []}
+            emptyText="The retrieved sources do not provide specific troubleshooting steps."
+          />
+
+          <div className="result-section">
+            <p className="field-label">Expected behavior</p>
+            <p className="result-body-copy">
+              {troubleshooting?.expectedBehavior || "Expected behavior is not established by the retrieved sources."}
+            </p>
+          </div>
+
+          <TroubleshootingList
+            title="Relevant limitations"
+            items={troubleshooting?.relevantLimitations ?? []}
+            emptyText="No directly relevant limitations were identified in the retrieved sources."
+          />
+        </>
+      ) : (
+        <>
+          <h2 className="result-title" id="result-title">
+            Recommended approach
+          </h2>
+
+          <div className="summary-banner">
+            <p className="field-label">Recommended configuration</p>
+            <p>{advisor?.recommendedConfiguration ?? "Run an analysis to see a recommendation."}</p>
+          </div>
+
+          <div className="result-facts">
+            <div className="result-fact">
+              <p className="field-label">Recommended Configuration</p>
+              <p>{advisor?.recommendedConfiguration ?? "-"}</p>
+            </div>
+            <div className="result-fact">
+              <p className="field-label">Relevant Area</p>
+              <p>{advisor?.relevantArea || (advisor ? unspecified : "-")}</p>
+            </div>
+            <div className="result-fact">
+              <p className="field-label">Trigger</p>
+              <p>{advisor?.trigger ? <code>{advisor.trigger}</code> : advisor ? unspecified : "-"}</p>
+            </div>
+            <div className="result-fact">
+              <p className="field-label">Base Object</p>
+              <p>{advisor?.baseObject ? <code>{advisor.baseObject}</code> : advisor ? unspecified : "-"}</p>
+            </div>
+          </div>
+
+          <div className="result-section logic-section">
+            <p className="field-label">Suggested Logic</p>
+            <pre className="logic-copy"><code>{advisor?.suggestedLogic || (advisor ? unspecified : "-")}</code></pre>
+          </div>
+
+          <div className="result-section">
+            <p className="field-label">Why this approach</p>
+            <p className="result-body-copy">{advisor?.whyThisApproach ?? "Run an analysis to see why a configuration approach fits."}</p>
+          </div>
+
+          {advisor && (advisor.targetField || advisor.targetEntity) && (
+            <div className="result-section">
+              <p className="field-label">{advisor.targetField ? "Target Field" : "Target Entity"}</p>
+              <p className="result-body-copy">{advisor.targetField || advisor.targetEntity}</p>
+            </div>
+          )}
+
+          <div className="result-section">
+            <p className="field-label">Configuration Guidance</p>
+            {advisor?.configurationGuidance.length ? (
+              <ol className="guidance-list">
+                {advisor.configurationGuidance.map((step, index) => <li key={`${index}-${step}`}>{step}</li>)}
+              </ol>
             ) : (
-              "-"
+              <p className="result-empty-note">{advisor ? "The retrieved documentation is insufficient for detailed configuration steps." : "-"}</p>
             )}
-          </p>
-        </div>
-        <div className="result-fact">
-          <p className="field-label">Base Object</p>
-          <p>
-            {result?.baseObject ? (
-              <code>{result.baseObject}</code>
-            ) : result ? (
-              unspecified
+          </div>
+
+          <div className="result-section explanation-section">
+            <p className="field-label">Explanation</p>
+            <p>{advisor?.explanation ?? "Run an analysis to see source-grounded guidance."}</p>
+          </div>
+
+          <div className="considerations-section">
+            <p className="field-label">Important Considerations</p>
+            <ul>{advisor?.importantConsiderations.map((item) => <li key={item}>{item}</li>)}</ul>
+            {advisor && advisor.importantConsiderations.length === 0 && (
+              <p className="result-empty-note">No additional considerations were identified in retrieved documentation.</p>
+            )}
+          </div>
+
+          <div className="result-section">
+            <p className="field-label">Validation / Testing</p>
+            {advisor?.validationSteps.length ? (
+              <ol className="guidance-list">
+                {advisor.validationSteps.map((step, index) => <li key={`${index}-${step}`}>{step}</li>)}
+              </ol>
             ) : (
-              "-"
+              <p className="result-empty-note">{advisor ? "No validation steps were supported by the retrieved documentation." : "-"}</p>
             )}
-          </p>
-        </div>
-      </div>
-
-      <div className="result-section logic-section">
-        <p className="field-label">Suggested Logic</p>
-        <pre className="logic-copy">
-          <code>{result?.suggestedLogic || (result ? unspecified : "-")}</code>
-        </pre>
-      </div>
-
-      <div className="result-section">
-        <p className="field-label">Why this approach</p>
-        <p className="result-body-copy">
-          {result?.whyThisApproach ??
-            "Run an analysis to see why a configuration approach fits."}
-        </p>
-      </div>
-
-      {result && (result.targetField || result.targetEntity) && (
-        <div className="result-section">
-          <p className="field-label">
-            {result.targetField ? "Target Field" : "Target Entity"}
-          </p>
-          <p className="result-body-copy">
-            {result.targetField || result.targetEntity}
-          </p>
-        </div>
+          </div>
+        </>
       )}
-
-      <div className="result-section">
-        <p className="field-label">Configuration Guidance</p>
-        {result?.configurationGuidance.length ? (
-          <ol className="guidance-list">
-            {result.configurationGuidance.map((step, index) => (
-              <li key={`${index}-${step}`}>{step}</li>
-            ))}
-          </ol>
-        ) : (
-          <p className="result-empty-note">
-            {result
-              ? "The retrieved documentation is insufficient for detailed configuration steps."
-              : "-"}
-          </p>
-        )}
-      </div>
-
-      <div className="result-section explanation-section">
-        <p className="field-label">Explanation</p>
-        <p>
-          {result?.explanation ??
-            "Run an analysis to see source-grounded guidance."}
-        </p>
-      </div>
-
-      <div className="considerations-section">
-        <p className="field-label">Important Considerations</p>
-        <ul>
-          {result?.importantConsiderations.map((consideration) => (
-            <li key={consideration}>{consideration}</li>
-          ))}
-        </ul>
-        {result && result.importantConsiderations.length === 0 && (
-          <p className="result-empty-note">
-            No additional considerations were identified in retrieved
-            documentation.
-          </p>
-        )}
-      </div>
-
-      <div className="result-section">
-        <p className="field-label">Validation / Testing</p>
-        {result?.validationSteps.length ? (
-          <ol className="guidance-list">
-            {result.validationSteps.map((step, index) => (
-              <li key={`${index}-${step}`}>{step}</li>
-            ))}
-          </ol>
-        ) : (
-          <p className="result-empty-note">
-            {result
-              ? "No validation steps were supported by the retrieved documentation."
-              : "-"}
-          </p>
-        )}
-      </div>
 
       <div className="sources-section">
         <p className="field-label">Sources</p>
-        {result?.sources.map((source) => (
+        {sources.map((source) => (
           <details
             className="source-item"
             key={`${source.title}-${source.section}`}
@@ -275,11 +318,34 @@ function ResultCard({ result }: { result: AnalysisResponse | null }) {
             <p>{source.section}</p>
           </details>
         ))}
-        {result && result.sources.length === 0 && (
+        {result && sources.length === 0 && (
           <p className="result-empty-note">No sources were retrieved.</p>
         )}
       </div>
     </section>
+  );
+}
+
+function TroubleshootingList({
+  title,
+  items,
+  emptyText,
+}: {
+  title: string;
+  items: string[];
+  emptyText: string;
+}) {
+  return (
+    <div className="result-section">
+      <p className="field-label">{title}</p>
+      {items.length > 0 ? (
+        <ol className="guidance-list">
+          {items.map((item, index) => <li key={`${index}-${item}`}>{item}</li>)}
+        </ol>
+      ) : (
+        <p className="result-empty-note">{emptyText}</p>
+      )}
+    </div>
   );
 }
 
@@ -288,7 +354,7 @@ export default function Home() {
   const [prompt, setPrompt] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [result, setResult] = useState<AnalysisResponse | null>(null);
+  const [result, setResult] = useState<AnalysisResult | null>(null);
   const successfulLiveRequests = useSyncExternalStore(
     subscribeToSessionRequestCount,
     getSessionRequestCount,
@@ -301,6 +367,7 @@ export default function Home() {
     setMode(nextMode);
     setPrompt("");
     setError("");
+    setResult(null);
   }
 
   async function analyze(event: React.FormEvent<HTMLFormElement>) {
@@ -347,14 +414,22 @@ export default function Home() {
         throw new Error(message);
       }
 
-      if (!isAnalysisResponse(payload)) {
+      if (
+        (mode === "advisor" && !isAdvisorResponse(payload)) ||
+        (mode === "troubleshooter" && !isTroubleshootingResponse(payload))
+      ) {
         throw new Error(
           "The analysis response was incomplete. Please try again.",
         );
       }
 
-      setResult(payload);
-      if (!payload.cached) {
+      setResult(
+        mode === "advisor"
+          ? { mode, answer: payload as AdvisorResponse }
+          : { mode, answer: payload as TroubleshootingResponse },
+      );
+      const answer = payload as AdvisorResponse | TroubleshootingResponse;
+      if (!answer.cached) {
         const nextCount = Math.min(usedCount + 1, requestLimit);
         try {
           window.sessionStorage.setItem(
@@ -481,7 +556,7 @@ export default function Home() {
           </form>
         </section>
 
-        <ResultCard result={result} />
+        <ResultCard result={result} mode={mode} />
       </main>
 
       <footer className="site-footer">

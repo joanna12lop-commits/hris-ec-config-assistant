@@ -2,7 +2,7 @@ import "server-only";
 
 import {
   generateGroundedAnswer,
-  type AnalysisAnswer,
+  type AnalysisResult,
   type AnalysisMode,
 } from "@/lib/openai";
 import { searchKnowledgeChunks } from "@/lib/knowledge-search";
@@ -16,7 +16,7 @@ const maximumCachedResponses = 500;
 const answerSchemaVersion = "analysis-answer-v3";
 
 type CachedAnswer = {
-  answer: AnalysisAnswer;
+  answer: AnalysisResult;
   expiresAt: number;
 };
 
@@ -44,7 +44,19 @@ function isAnalysisMode(value: unknown): value is AnalysisMode {
   return value === "advisor" || value === "troubleshooter";
 }
 
-function notEnoughInformation(): AnalysisAnswer {
+function notEnoughInformation(mode: AnalysisMode): AnalysisResult {
+  if (mode === "troubleshooter") {
+    return {
+      likelyIssueArea: "Insufficient retrieved documentation",
+      likelyCause: "The retrieved sources do not provide enough relevant information to diagnose this issue.",
+      checksToPerform: [],
+      troubleshootingSteps: [],
+      expectedBehavior: "The expected behavior is not established by the retrieved documentation.",
+      relevantLimitations: [],
+      sources: [],
+    };
+  }
+
   return {
     recommendedConfiguration: "Not enough information",
     relevantArea: "",
@@ -69,7 +81,7 @@ function normalizedCacheKey(query: string, mode: AnalysisMode): string {
   return JSON.stringify([answerSchemaVersion, normalizedQuery, mode]);
 }
 
-function readCache(key: string): AnalysisAnswer | undefined {
+function readCache(key: string): AnalysisResult | undefined {
   const cached = analysisCache.get(key);
   if (!cached) return undefined;
   if (cached.expiresAt <= Date.now()) {
@@ -82,7 +94,7 @@ function readCache(key: string): AnalysisAnswer | undefined {
   return cached.answer;
 }
 
-function writeCache(key: string, answer: AnalysisAnswer): void {
+function writeCache(key: string, answer: AnalysisResult): void {
   const now = Date.now();
   for (const [cachedKey, cached] of analysisCache) {
     if (cached.expiresAt <= now) {
@@ -155,7 +167,7 @@ export async function POST(request: Request) {
   try {
     const chunks = await searchKnowledgeChunks(query.trim());
     if (chunks.length === 0) {
-      const answer = notEnoughInformation();
+      const answer = notEnoughInformation(mode);
       writeCache(cacheKey, answer);
       return Response.json({ ...answer, cached: false });
     }
