@@ -38,6 +38,16 @@ function checkSchema(answer) {
   for (const key of ["likelyIssueArea", "likelyCause", "expectedBehavior"]) assert.equal(typeof answer[key], "string");
   for (const key of ["checksToPerform", "troubleshootingSteps", "relevantLimitations"]) assert(answer[key].every(item => typeof item === "string"));
 }
+function checkConciseGuidance(answer) {
+  for (const items of [answer.checksToPerform, answer.troubleshootingSteps]) {
+    assert.equal(new Set(items).size, items.length);
+    for (const item of items) {
+      assert(item.length <= 250, `Guidance is too long: ${item}`);
+      assert((item.match(/[.!?](?:\s|$)/g) ?? []).length <= 2);
+      assert(!/Compare your existing configuration|Documentation states:|Validate this behavior against/.test(item));
+    }
+  }
+}
 const dataset = JSON.parse(fs.readFileSync("data/ec_rag_chunks_cleaned.json", "utf8"));
 function chunk(title) {
   const item = dataset.find(item => item.title === title);
@@ -72,15 +82,17 @@ async function main() {
       const answer = await generateGroundedAnswer(query, "troubleshooter", retrieved);
       console.log(JSON.stringify({ query, retrieved: retrieved.map(cite), answer }, null, 2));
       checkSchema(answer);
+      checkConciseGuidance(answer);
       assert(answer.checksToPerform.length > 0);
       assert(answer.troubleshootingSteps.length > 0);
       assert(answer.sources.length > 0);
       assert(!answer.expectedBehavior.includes("not established"));
       if (query.includes("workflow")) {
+        assert(answer.checksToPerform.length >= 3 && answer.checksToPerform.length <= 5);
         const diagnostics = JSON.stringify(answer);
         assert.match(diagnostics, /onSave/);
         assert.match(diagnostics, /conditions/i);
-        assert.match(diagnostics, /supported data change/i);
+        assert.match(diagnostics, /supports the affected type of data change/i);
         assert.match(diagnostics, /assign the configured workflow/i);
         assert.match(diagnostics, /Event Reason Derivation/i);
         assert(!diagnostics.includes("Propagation stops"));
@@ -120,11 +132,30 @@ async function main() {
   };
   const workflowAnswer = await generateGroundedAnswer("the workflow didn't trigger after promotion", "troubleshooter", [workflow, order]);
   checkSchema(workflowAnswer);
-  assert(workflowAnswer.checksToPerform.length >= 4);
-  assert.equal(workflowAnswer.troubleshootingSteps.length, 2);
+  checkConciseGuidance(workflowAnswer);
+  assert.equal(workflowAnswer.checksToPerform.length, 5);
+  assert.equal(workflowAnswer.troubleshootingSteps.length, 4);
   assert.match(request.messages[0].content, /diagnose likely causes/);
   assert.match(request.messages[0].content, /Do not assume promotion is supported/);
   console.log("PASS: workflow diagnostic schema, trigger/conditions/support/assignment/order checks");
+
+  // Multiple sources and differently worded excerpts must not duplicate a check.
+  const overlapping = { ...workflow, source_title: "Workflow Derivation Registration", section: "Duplicate supporting section" };
+  generated.sources.push(cite(overlapping));
+  generated.checksToPerform.push({ step: "Confirm the trigger again", evidence: "The Trigger Workflows scenario is the dedicated scenario and can only be registered as onSave in Manage Business Configuration." });
+  const merged = await generateGroundedAnswer("the workflow didn't trigger after promotion", "troubleshooter", [workflow, order, overlapping]);
+  assert.deepEqual(merged.checksToPerform, workflowAnswer.checksToPerform);
+  assert.deepEqual(merged.troubleshootingSteps, workflowAnswer.troubleshootingSteps);
+
+  // A documented trigger alone must not manufacture conditions, assignment,
+  // supported-change or order checks from an ungrounded generated instruction.
+  const triggerOnly = { ...workflow, content: "Source summary: Trigger Workflows scenario rules can only be registered for onSave." };
+  generated.sources = [cite(workflow)];
+  const partial = await generateGroundedAnswer("the workflow didn't trigger after promotion", "troubleshooter", [triggerOnly]);
+  assert.equal(partial.checksToPerform.length, 1);
+  assert.match(partial.checksToPerform[0], /registered for onSave/);
+  assert(!JSON.stringify(partial.checksToPerform).includes("conditions"));
+  console.log("PASS: overlapping source evidence merged; missing facts do not create extra checks");
 
   const propagation = chunk("Forward Propagation in Job Information");
   generated = {
@@ -137,6 +168,7 @@ async function main() {
   };
   const generalAnswer = await generateGroundedAnswer("Future Job Information records did not update after a correction in History UI", "troubleshooter", [propagation]);
   checkSchema(generalAnswer);
+  checkConciseGuidance(generalAnswer);
   assert(generalAnswer.checksToPerform.length >= 1);
   assert(!JSON.stringify(generalAnswer).includes("Workflow"));
   console.log("PASS: non-workflow diagnosis using existing forward-propagation documentation");
@@ -159,7 +191,10 @@ async function main() {
   // The advisor implementation is preserved verbatim apart from its private name.
   const baseline = execFileSync("git", ["show", "HEAD:src/lib/openai.ts"], { encoding: "utf8" }).replace(/\r\n/g, "\n");
   const current = fs.readFileSync("src/lib/openai.ts", "utf8").replace(/\r\n/g, "\n");
-  const originalBody = baseline.slice(baseline.indexOf('export async function generateGroundedAnswer')).slice(baseline.slice(baseline.indexOf('export async function generateGroundedAnswer')).indexOf('  const response ='));
+  const baselineAdvisor = baseline.slice(baseline.indexOf('async function generateGroundedConfigurationAnswer') >= 0
+    ? baseline.indexOf('async function generateGroundedConfigurationAnswer')
+    : baseline.indexOf('export async function generateGroundedAnswer'));
+  const originalBody = baselineAdvisor.slice(baselineAdvisor.indexOf('  const response ='));
   const currentBody = current.slice(current.indexOf('async function generateGroundedConfigurationAnswer')).slice(current.slice(current.indexOf('async function generateGroundedConfigurationAnswer')).indexOf('  const response ='));
   assert.equal(currentBody, originalBody);
   console.log("PASS: Configuration Advisor generation unchanged");

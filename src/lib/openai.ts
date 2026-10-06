@@ -382,6 +382,68 @@ function resolveBaseObject(
   return equallyRelevantSources.size === 1 ? bestMatch.source : "";
 }
 
+function conciseTroubleshootingGuidance(evidence: string[]): {
+  checks: string[];
+  steps: string[];
+} {
+  // Each diagnostic concept is emitted once, regardless of how many excerpts
+  // support it. Match complete documented facts, not isolated shared keywords.
+  const supports = (pattern: RegExp) => evidence.some((excerpt) =>
+    pattern.test(normalizeEvidence(excerpt)),
+  );
+  const checks = new Map<string, string>();
+  const steps = new Map<string, string>();
+  const add = (key: string, pattern: RegExp, check: string, step: string) => {
+    if (!supports(pattern)) return;
+    checks.set(key, check);
+    steps.set(key, step);
+  };
+
+  add("trigger", /trigger workflows[^.]*only[^.]*onsave/,
+    "Confirm the Trigger Workflows rule is registered for onSave. This scenario supports only that trigger.",
+    "Start by checking the existing rule's onSave registration.");
+  add("conditions", /(?:conditions that determine whether a workflow should be triggered|if approval conditions are met|meets the configured approval conditions)/,
+    "Verify that the changed employee data meets the rule's configured approval conditions.",
+    "Use the actual changed data to evaluate the configured approval conditions.");
+  add("supported-change", /(?:workflow[^.]*supported (?:employee )?data changes?|supported data changes?[^.]*workflow)/,
+    "Confirm that Workflow Derivation supports the affected type of data change. Support cannot be assumed for every change.",
+    "Verify support for the affected data change before drawing a conclusion about the rule.");
+  add("assignment", /assign the configured (?:approval )?workflow/,
+    "Check that the rule assigns the expected configured workflow when its approval conditions are met.",
+    "When the approval conditions match, check whether the rule assigns the expected workflow.");
+  add("order", /workflow derivation[^.]*execute after standard onsave rules and after event reason derivation/,
+    "Where Event Reason Derivation applies, check the values available after earlier rules run. Workflow Derivation evaluates them after standard onSave rules and Event Reason Derivation.",
+    "Review the values available to Workflow Derivation after standard onSave rules and any applicable Event Reason Derivation.");
+
+  if (checks.has("conditions") && checks.has("assignment")) {
+    steps.set("conditions", "Evaluate the configured approval conditions using the changed data. If they match, verify that the rule assigns the expected workflow.");
+    steps.delete("assignment");
+  }
+
+  add("history-correction", /corrections and most deletions in history ui do not forward propagate/,
+    "Check whether the change was a correction in History UI. Corrections do not forward propagate to future records.",
+    "Identify how the change was made. If it was a History UI correction, the documented behavior explains why future records were unchanged.");
+  add("future-value", /forward propagation copies[^.]*until a future record contains a different original value/,
+    "Inspect the original field values in future effective-dated records. Forward propagation stops at a record with a different original value.",
+    "Follow the future records in date order and identify the first different original field value, where propagation stops.");
+  add("excluded-fields", /(?:fields are intentionally excluded from forward propagation|do not propagate fields on the system-maintained exclusion list)/,
+    "Verify whether the affected field is excluded from forward propagation.",
+    "Check the documented field exclusions before expecting that field to update in future records.");
+
+  if (checks.size === 0) {
+    // For unfamiliar facts, keep one short, verified excerpt rather than
+    // trusting an unverified model paraphrase or repeating a generic template.
+    const sentence = evidence.flatMap((excerpt) => excerpt.match(/[^.!?]+[.!?](?:\s|$)/g) ?? [])
+      .map((item) => item.trim()).find((item) => item.length <= 220);
+    if (sentence) {
+      checks.set("documented-behavior", `Check the affected change against this documented behavior: ${sentence}`);
+      steps.set("documented-behavior", `Verify the observed result against the documented behavior: ${sentence}`);
+    }
+  }
+
+  return { checks: [...checks.values()], steps: [...steps.values()] };
+}
+
 export async function generateGroundedAnswer(
   query: string,
   mode: AnalysisMode,
@@ -447,7 +509,7 @@ async function generateGroundedTroubleshooting(
           "IMPORTANT: Select facts directly about the feature failing in the query. Similar retrieved topics are not automatically relevant. A promotion workflow query is about Workflow Derivation, not compensation-specific approval or record propagation. Do not claim propagation gaps/conflicts explain workflow failure. Only discuss compensation if the query mentions a compensation change.",
           "For workflow-not-triggered issues: use the Workflow Derivation Overview and Execution Order when retrieved. Include separate checks for documented onSave registration, conditions matching changed data, whether the data change is supported, workflow assignment when conditions match, and documented order where applicable. Do not assume promotion is supported merely because the user mentions it.",
           "For every feature, select documented requirements as checks, and documented behavior as validation steps. For a History UI correction, emphasize the documented correction exception. Do not mistake general behavior for behavior supported in an excluded context.",
-          "Use 3 to 6 checks and 2 to 4 ordered troubleshooting steps when supported. Describe causes as hypotheses; the user's actual configuration is unknown. State plainly when exact condition values, data-change support, or inspection procedures are absent. Do not infer undocumented causal relationships from unrelated limitations.",
+          "Use 3 to 5 distinct actionable checks and 2 to 4 ordered troubleshooting steps when supported. Keep each item to 1 or 2 short plain-English sentences. Combine sources supporting the same check; do not repeat generic comparison wording with different excerpts. Describe causes as hypotheses; the user's actual configuration is unknown. State plainly when exact condition values, data-change support, or inspection procedures are absent. Do not infer undocumented causal relationships from unrelated limitations.",
           "Each statement is an object with step and evidence strings. evidence MUST be a character-for-character contiguous excerpt of sourceContent. Never shorten, paraphrase, or join excerpts. Reusing one excerpt across fields is allowed. Choose concise complete sentences or the configuration logic. The public result uses verified evidence with investigation framing, so evidence itself must be directly relevant to that field.",
           "likelyIssueArea: an exact short feature name appearing in its evidence, not an instruction. likelyCause: a possible mismatch with a documented requirement. expectedBehavior: evidence describing the successful outcome; use the relevant Configuration logic if present. relevantLimitations: directly relevant documented restrictions. If a scalar is unsupported return null; if an array item is unsupported omit it. Never use null evidence.",
           "For sources return exact title and section of ONLY records supporting these statements. Prefer directly relevant records over more citations. Return exactly the schema fields: likelyIssueArea, likelyCause, checksToPerform, troubleshootingSteps, expectedBehavior, relevantLimitations, sources. Do not output advisor fields such as recommendedConfiguration or suggestedLogic.",
@@ -560,25 +622,21 @@ async function generateGroundedTroubleshooting(
     : null;
   const causeEvidence = supportedStatement(answer.likelyCause);
   const documentedLogic = documentedField(primaryChunk, "Configuration logic");
-  const documentedBehaviors = diagnosticChunks.flatMap((chunk) => {
-    const summary = documentedField(chunk, "Source summary");
-    return summary ? [summary] : [];
+  const diagnosticEvidence = diagnosticChunks.flatMap((chunk) => {
+    return ["Source summary", "Configuration logic", "Important limitations"].flatMap((label) => {
+      const fact = documentedField(chunk, label);
+      return fact ? [fact] : [];
+    });
   });
-  const checksFraming = "Compare your existing configuration and changed data with this requirement. A mismatch identifies an area to investigate; a match rules out that mismatch. Documentation states:";
-  const stepsFraming = "Validate this behavior against the affected change and compare the observed result. Exact inspection procedures beyond these excerpts are not established here. Documentation states:";
-  const checks = supportedStatements("checksToPerform", checksFraming);
-  const steps = supportedStatements("troubleshootingSteps", stepsFraming);
-  // Source summaries and configuration logic provide useful general checks
-  // without fabricating missing customer-specific conditions or procedures.
-  for (const behavior of [...documentedBehaviors, ...(documentedLogic ? [documentedLogic] : [])]) {
-    if (!checks.some((check) => check.includes(behavior))) checks.push(`${checksFraming} ${behavior}`);
-  }
-  if (steps.length < 2) {
-    for (const behavior of [documentedLogic, ...documentedBehaviors]) {
-      if (behavior && !steps.some((step) => step.includes(behavior))) steps.push(`${stepsFraming} ${behavior}`);
-      if (steps.length >= 2) break;
+  for (const field of ["checksToPerform", "troubleshootingSteps"]) {
+    const items = answer[field];
+    if (!Array.isArray(items)) continue;
+    for (const item of items) {
+      const fact = supportedStatement(item);
+      if (fact) diagnosticEvidence.push(fact);
     }
   }
+  const { checks, steps } = conciseTroubleshootingGuidance(diagnosticEvidence);
   const documentedLimitations = documentedField(primaryChunk, "Important limitations");
   const limitations = supportedStatements("relevantLimitations", "Documentation states:");
   if (documentedLimitations && limitations.length === 0) limitations.push(`Documentation states: ${documentedLimitations}`);
