@@ -59,7 +59,7 @@ function chunk(title) {
   const item = dataset.find(item => item.title === title);
   assert(item, `Missing knowledge fixture: ${title}`);
   return { source_title: item.title, section: item.source_section,
-    content: [`Source summary: ${item.source_summary}`, `Configuration logic: ${item.configuration_logic}`, `Important limitations: ${item.important_limitations.join("; ")}`].join("\n\n") };
+    content: [`Source summary: ${item.source_summary}`, `Supported use cases: ${item.supported_use_cases.join("; ")}`, `Trigger event: ${item.trigger_event}`, `Base object/entity: ${item.base_object_entity}`, `Configuration logic: ${item.configuration_logic}`, `Important limitations: ${item.important_limitations.join("; ")}`].join("\n\n") };
 }
 function cite(item) { return { title: item.source_title, section: item.section }; }
 function evidence(step, item) { return { step, evidence: item.content.split("\n")[0].replace("Source summary: ", "") }; }
@@ -82,11 +82,31 @@ async function main() {
     const load = loader({ openai: TraceOpenAI });
     const { searchKnowledgeChunks } = load("src/lib/knowledge-search.ts");
     const { generateGroundedAnswer } = load("src/lib/openai.ts");
-    for (const query of ["the workflow didn't trigger after promotion", "Future Job Information records did not update after a correction in History UI"]) {
+    for (const [query, mode] of [
+      ["the workflow didn't trigger after promotion", "troubleshooter"],
+      ["Recurring pay component did not update after FTE change", "troubleshooter"],
+      ["FTE change should update a recurring pay component", "advisor"],
+      ["Job Classification change should update Job Title", "advisor"],
+      ["Future Job Information records did not update after a correction in History UI", "troubleshooter"],
+    ]) {
       const retrieved = await searchKnowledgeChunks(query);
       assert(retrieved.length > 0, "Live retrieval returned no documentation");
-      const answer = await generateGroundedAnswer(query, "troubleshooter", retrieved);
-      console.log(JSON.stringify({ query, retrieved: retrieved.map(cite), answer }, null, 2));
+      const answer = await generateGroundedAnswer(query, mode, retrieved);
+      console.log(JSON.stringify({ query, mode, retrieved: retrieved.map(cite), answer }, null, 2));
+      if (mode === "advisor") {
+        assert(answer.configurationGuidance.length > 0);
+        assert(answer.sources.length > 0);
+        if (query.includes("FTE")) {
+          assert.equal(answer.baseObject, "Job Information");
+          assert.equal(answer.targetEntity, "Recurring Pay Components");
+          assert.match(answer.configurationGuidance.join(" "), /UI, API, and import/);
+          assert.match(answer.whyThisApproach, /Job Information.*Recurring Pay Components/);
+        } else {
+          assert.equal(answer.trigger, "onChange");
+          assert.match(answer.configurationGuidance.join(" "), /Job Classification|Job Information Model/);
+        }
+        continue;
+      }
       checkSchema(answer);
       checkConciseGuidance(answer);
       checkReadableCause(answer);
@@ -99,11 +119,14 @@ async function main() {
         const diagnostics = JSON.stringify(answer);
         assert.match(diagnostics, /onSave/);
         assert.match(diagnostics, /conditions/i);
-        assert.match(diagnostics, /supports the affected type of data change/i);
+        assert.match(diagnostics, /does not confirm support for this exact transaction/i);
         assert.match(diagnostics, /assign the configured workflow/i);
         assert.match(diagnostics, /Event Reason Derivation/i);
         assert(!diagnostics.includes("Propagation stops"));
         assert(!diagnostics.includes("salary-increase percentage"));
+      } else if (query.includes("FTE")) {
+        assert.match(answer.checksToPerform.join(" "), /UI, API, and import/);
+        assert.match(answer.checksToPerform.join(" "), /Job Information.*Recurring Pay Components/);
       } else {
         assert.match(JSON.stringify(answer), /Corrections.*do not forward propagate/i);
       }
@@ -143,7 +166,7 @@ async function main() {
   checkReadableCause(workflowAnswer);
   assert.match(workflowAnswer.likelyCause, /workflow conditions may not have been met/);
   assert.equal(workflowAnswer.checksToPerform.length, 5);
-  assert.equal(workflowAnswer.troubleshootingSteps.length, 4);
+  assert.equal(workflowAnswer.troubleshootingSteps.length, 3);
   assert.match(request.messages[0].content, /diagnose likely causes/);
   assert.match(request.messages[0].content, /Do not assume promotion is supported/);
   console.log("PASS: workflow diagnostic schema, trigger/conditions/support/assignment/order checks");
@@ -185,6 +208,16 @@ async function main() {
   assert(!JSON.stringify(generalAnswer).includes("Workflow"));
   console.log("PASS: non-workflow diagnosis using existing forward-propagation documentation");
 
+  const incidentalOverview = chunk("Event Reason Derivation Overview");
+  generated.sources.push(cite(incidentalOverview));
+  generated.likelyIssueArea = evidence("Event Reason Derivation", incidentalOverview);
+  const focusedCorrection = await generateGroundedAnswer("Future Job Information records did not update after a correction in History UI", "troubleshooter", [propagation, incidentalOverview]);
+  assert.match(focusedCorrection.likelyIssueArea, /Forward Propagation/);
+  assert.match(focusedCorrection.checksToPerform.join(" "), /correction in History UI/);
+  assert.equal(focusedCorrection.sources.length, 2);
+  generated.sources = [cite(propagation)];
+  generated.likelyIssueArea = evidence("Forward Propagation in Job Information", propagation);
+
   const originalCause = generated.likelyCause;
   generated.likelyCause = { step: "Unverified explanation", evidence: "Rules are not triggered for propagated future records." };
   const unfamiliarCause = await generateGroundedAnswer("future-record issue", "troubleshooter", [propagation]);
@@ -210,16 +243,60 @@ async function main() {
   assert.match(insufficient.likelyCause, /not provide enough/);
   console.log("PASS: unsupported diagnostics removed; insufficient evidence explicitly reported");
 
-  // The advisor implementation is preserved verbatim apart from its private name.
+  const crossEntity = chunk("Cross-Entity Rules Overview");
+  generated = {
+    likelyIssueArea: evidence("Cross-Entity Rules", crossEntity),
+    likelyCause: evidence("Possible source or target mismatch", crossEntity),
+    checksToPerform: [], troubleshootingSteps: [], expectedBehavior: null,
+    relevantLimitations: [], sources: [cite(crossEntity)],
+  };
+  const crossTroubleshooting = await generateGroundedAnswer("Recurring pay component did not update after FTE change", "troubleshooter", [crossEntity]);
+  checkSchema(crossTroubleshooting);
+  checkConciseGuidance(crossTroubleshooting);
+  assert.match(crossTroubleshooting.checksToPerform.join(" "), /UI, API, and import/);
+  assert.match(crossTroubleshooting.checksToPerform.join(" "), /Job Information.*Recurring Pay Components/);
+  assert.match(crossTroubleshooting.checksToPerform.join(" "), /both entities.*MSS/);
+  assert(!crossTroubleshooting.relevantLimitations.join(" ").includes("onSave"));
+  const incompleteCrossEntity = { ...crossEntity, content: crossEntity.content.replace("onSave is supported for UI, API and imports when the source is modified.", "") };
+  const unconfirmed = await generateGroundedAnswer("Recurring pay component did not update after FTE change", "troubleshooter", [incompleteCrossEntity]);
+  assert(unconfirmed.checksToPerform.includes("The retrieved documentation does not confirm support for this exact transaction."));
+  assert(!unconfirmed.checksToPerform.join(" ").includes("UI, API, and import"));
+
+  generated = {
+    recommendedConfiguration: "Cross-Entity Business Rule", baseObject: "Job Information",
+    targetEntity: "Recurring Pay Components", trigger: "", targetField: "",
+    whyThisApproach: "Generic supported scenario", configurationGuidance: [], validationSteps: [],
+    importantConsiderations: ["The source element must be the rule base object.", "onSave is supported for UI, API and imports when the source is modified."],
+    sources: [cite(crossEntity)],
+  };
+  const crossAdvisor = await generateGroundedAnswer("FTE change should update a recurring pay component", "advisor", [crossEntity]);
+  assert.equal(crossAdvisor.trigger, "onSave");
+  assert.match(crossAdvisor.whyThisApproach, /Job Information.*Recurring Pay Components/);
+  assert.match(crossAdvisor.configurationGuidance.join(" "), /UI, API, and import/);
+  assert.match(crossAdvisor.explanation, /does not provide the exact setup/);
+  assert.match(crossAdvisor.validationSteps.join(" "), /Change FTE in Job Information and save/);
+  assert.equal(crossAdvisor.importantConsiderations.length, 0);
+  assert(!JSON.stringify(crossAdvisor).includes("Confirm the applicable supported scenario"));
+  assert.match(request.messages[0].content, /Do not repeat the same documented fact across sections/);
+  const jobTitle = chunk("Business-Rule Defaulting from Job Classification to Job Title");
+  generated = { ...generated, recommendedConfiguration: "onChange Business Rule", baseObject: "Job Information Model", targetEntity: "", targetField: "Job Title", sources: [cite(jobTitle)] };
+  const jobTitleAdvisor = await generateGroundedAnswer("Job Classification change should update Job Title", "advisor", [jobTitle]);
+  assert.match(jobTitleAdvisor.configurationGuidance.join(" "), /Trigger onChange Rules for HRIS Elements/);
+  assert.match(jobTitleAdvisor.configurationGuidance.join(" "), /Assign the rule to the Job Classification field/);
+  assert.equal(jobTitleAdvisor.validationSteps.length, 1);
+  assert(!jobTitleAdvisor.validationSteps.join(" ").includes("save"));
+  console.log("PASS: both modes name documented entities and processing channels; missing transaction support is explicit");
+
+  // Answer wording may change, but the source-selection rules must remain intact.
   const baseline = execFileSync("git", ["show", "HEAD:src/lib/openai.ts"], { encoding: "utf8" }).replace(/\r\n/g, "\n");
   const current = fs.readFileSync("src/lib/openai.ts", "utf8").replace(/\r\n/g, "\n");
   const baselineAdvisor = baseline.slice(baseline.indexOf('async function generateGroundedConfigurationAnswer') >= 0
     ? baseline.indexOf('async function generateGroundedConfigurationAnswer')
     : baseline.indexOf('export async function generateGroundedAnswer'));
-  const originalBody = baselineAdvisor.slice(baselineAdvisor.indexOf('  const response ='));
-  const currentBody = current.slice(current.indexOf('async function generateGroundedConfigurationAnswer')).slice(current.slice(current.indexOf('async function generateGroundedConfigurationAnswer')).indexOf('  const response ='));
-  assert.equal(currentBody, originalBody);
-  console.log("PASS: Configuration Advisor generation unchanged");
+  const sourceSelection = (source) => source.slice(source.indexOf('  const chunksByCitation'), source.indexOf('  if (selectedChunks.length === 0)'));
+  const currentAdvisor = current.slice(current.indexOf('async function generateGroundedConfigurationAnswer'));
+  assert.equal(sourceSelection(currentAdvisor), sourceSelection(baselineAdvisor));
+  console.log("PASS: Advisor source filtering unchanged");
 
   // Render actual result-card JSX, including the empty Troubleshooter state.
   const page = fs.readFileSync("src/app/page.tsx", "utf8") + '\nexport { ResultCard };';
