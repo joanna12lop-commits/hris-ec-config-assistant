@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, useSyncExternalStore } from "react";
+import { analysisErrorMessage } from "@/lib/analysis-errors";
 
 type Mode = "advisor" | "troubleshooter";
 type AdvisorResponse = {
@@ -411,14 +412,7 @@ export default function Home() {
       const payload: unknown = await response.json();
 
       if (!response.ok) {
-        const message =
-          typeof payload === "object" &&
-          payload !== null &&
-          "error" in payload &&
-          typeof payload.error === "string"
-            ? payload.error
-            : "Analysis failed. Please try again.";
-        throw new Error(message);
+        throw new Error(analysisErrorMessage(payload, response.status));
       }
 
       if (

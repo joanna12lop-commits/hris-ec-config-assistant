@@ -7,6 +7,8 @@ import {
 } from "@/lib/openai";
 import { searchKnowledgeChunks } from "@/lib/knowledge-search";
 import { checkAnalysisRateLimit } from "@/lib/analysis-rate-limit";
+import { claimDailyAnalysisSlot, releaseDailyAnalysisSlot } from "@/lib/analysis-daily-limit";
+import { dailyAnalysisLimitMessage } from "@/lib/analysis-errors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -164,7 +166,16 @@ export async function POST(request: Request) {
     );
   }
 
+  let claimedUsageDate: string | null = null;
   try {
+    claimedUsageDate = await claimDailyAnalysisSlot();
+    if (claimedUsageDate === null) {
+      return Response.json(
+        { error: "demo_daily_limit", message: dailyAnalysisLimitMessage },
+        { status: 429 },
+      );
+    }
+
     const chunks = await searchKnowledgeChunks(query.trim());
     if (chunks.length === 0) {
       const answer = notEnoughInformation(mode);
@@ -176,6 +187,15 @@ export async function POST(request: Request) {
     writeCache(cacheKey, answer);
     return Response.json({ ...answer, cached: false });
   } catch (error) {
+    if (claimedUsageDate !== null) {
+      try {
+        await releaseDailyAnalysisSlot(claimedUsageDate);
+      } catch (releaseError) {
+        // Keep the reservation if Supabase cannot confirm its release.
+        // Retrying a date-only decrement could release another request's slot.
+        console.error("/api/analyze quota release failed", safeErrorDetails(releaseError));
+      }
+    }
     console.error("/api/analyze failed", safeErrorDetails(error));
     return Response.json(
       {

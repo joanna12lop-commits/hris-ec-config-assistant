@@ -302,7 +302,9 @@ async function main() {
   const page = fs.readFileSync("src/app/page.tsx", "utf8") + '\nexport { ResultCard };';
   const code = ts.transpileModule(page, { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } }).outputText;
   const compiledModule = { exports: {} };
-  vm.runInThisContext(`(function(require,module,exports){${code}\n})`)(nodeRequire, compiledModule, compiledModule.exports);
+  const pageRequire = (name) => name.startsWith("@/")
+    ? loader()(`src/${name.slice(2)}.ts`) : nodeRequire(name);
+  vm.runInThisContext(`(function(require,module,exports){${code}\n})`)(pageRequire, compiledModule, compiledModule.exports);
   const React = nodeRequire("react");
   const { renderToStaticMarkup } = nodeRequire("react-dom/server");
   for (const answer of [null, workflowAnswer, generalAnswer]) {

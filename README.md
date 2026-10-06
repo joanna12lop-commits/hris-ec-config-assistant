@@ -85,8 +85,19 @@ Open [http://localhost:3000](http://localhost:3000). For local server configurat
 - A lightweight server-side rate limiter provides a second request guard.
 - Responses are cached in memory by normalized query and mode.
 - A cache hit reuses the full answer without another OpenAI embedding or generation request.
+- All uncached `/api/analyze` requests share a persistent allowance of 30 per UTC day in Supabase. In-flight requests reserve capacity before embedding or answer generation; successful requests keep their slot, and caught failures release it.
 
 The cache and rate limiter are process-local safeguards for this small public demo, not a distributed quota system.
+
+### Manual daily quota setup
+
+Run all of [supabase/daily-ai-usage.sql](supabase/daily-ai-usage.sql) manually in the Supabase SQL Editor before deploying this version. The application and build do not run this SQL or modify the database schema. It creates the daily counter and atomic claim/release RPCs, with access limited to the server's service role.
+
+The request order is input validation, existing cache, existing rate limiter, daily quota claim, embedding/retrieval, and answer generation. Cache hits never query or consume the daily quota. Supabase determines the claim's UTC date, and a failure releases against that original date, even after midnight. An empty retrieval still consumes one slot because its embedding call succeeded.
+
+If quota storage is unavailable or the SQL has not been installed, uncached analyses stop before OpenAI calls. If a release cannot be persisted, or the server stops before cleanup runs, the reservation remains for that day; the server logs release errors and does not risk a duplicate decrement. The next UTC day has a separate counter, so no reset job is needed.
+
+The quota covers live analyses through `/api/analyze`. The temporary `/api/test-search` and `/api/seed-knowledge` endpoints return 404 in production so they cannot bypass the allowance. They remain available in development for maintenance.
 
 ## Disclaimer
 
